@@ -8,7 +8,11 @@ interface ToastProps {
   onDone?: () => void;
 }
 
-export default function Toast({ message, duration = 2000, onDone }: ToastProps) {
+export default function Toast({
+  message,
+  duration = 2000,
+  onDone,
+}: ToastProps) {
   const [visible, setVisible] = useState(true);
 
   useEffect(() => {

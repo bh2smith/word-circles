@@ -97,27 +97,24 @@ export default function Game() {
     [],
   );
 
-  const updateStats = useCallback(
-    (won: boolean, numGuesses: number) => {
-      setStats((prev) => {
-        const next: Stats = {
-          gamesPlayed: prev.gamesPlayed + 1,
-          gamesWon: prev.gamesWon + (won ? 1 : 0),
-          currentStreak: won ? prev.currentStreak + 1 : 0,
-          maxStreak: won
-            ? Math.max(prev.maxStreak, prev.currentStreak + 1)
-            : prev.maxStreak,
-          guessDistribution: [...prev.guessDistribution],
-        };
-        if (won) {
-          next.guessDistribution[numGuesses - 1]++;
-        }
-        saveStats(next);
-        return next;
-      });
-    },
-    [],
-  );
+  const updateStats = useCallback((won: boolean, numGuesses: number) => {
+    setStats((prev) => {
+      const next: Stats = {
+        gamesPlayed: prev.gamesPlayed + 1,
+        gamesWon: prev.gamesWon + (won ? 1 : 0),
+        currentStreak: won ? prev.currentStreak + 1 : 0,
+        maxStreak: won
+          ? Math.max(prev.maxStreak, prev.currentStreak + 1)
+          : prev.maxStreak,
+        guessDistribution: [...prev.guessDistribution],
+      };
+      if (won) {
+        next.guessDistribution[numGuesses - 1]++;
+      }
+      saveStats(next);
+      return next;
+    });
+  }, []);
 
   const submitGuess = useCallback(async () => {
     if (
@@ -189,7 +186,15 @@ export default function Game() {
     } finally {
       setSubmitting(false);
     }
-  }, [currentGuess, gameId, guesses, status, submitting, updateStats, recordOnChain]);
+  }, [
+    currentGuess,
+    gameId,
+    guesses,
+    status,
+    submitting,
+    updateStats,
+    recordOnChain,
+  ]);
 
   const onKey = useCallback(
     (key: string) => {
@@ -251,7 +256,14 @@ export default function Game() {
           className="w-10 h-10 flex items-center justify-center text-white hover:bg-neutral-700 rounded transition-colors"
           aria-label="Statistics"
         >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <svg
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
             <rect x="4" y="14" width="4" height="7" rx="1" />
             <rect x="10" y="9" width="4" height="12" rx="1" />
             <rect x="16" y="4" width="4" height="17" rx="1" />
@@ -263,9 +275,7 @@ export default function Game() {
       <p className="text-neutral-400 text-sm">Game #{gameId}</p>
 
       {/* Toast */}
-      {toast && (
-        <Toast message={toast} onDone={() => setToast(null)} />
-      )}
+      {toast && <Toast message={toast} onDone={() => setToast(null)} />}
 
       {/* Board */}
       <Board guesses={guesses} currentGuess={currentGuess} shake={shake} />

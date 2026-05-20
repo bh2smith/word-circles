@@ -21,19 +21,11 @@ export default function Board({ guesses, currentGuess, shake }: BoardProps) {
     for (let j = 0; j < WORD_LENGTH; j++) {
       if (guess) {
         tiles.push(
-          <Tile
-            key={j}
-            letter={guess.word[j]}
-            result={guess.results[j]}
-          />,
+          <Tile key={j} letter={guess.word[j]} result={guess.results[j]} />,
         );
       } else if (isCurrentRow) {
         tiles.push(
-          <Tile
-            key={j}
-            letter={currentGuess[j] || ""}
-            isCurrent={true}
-          />,
+          <Tile key={j} letter={currentGuess[j] || ""} isCurrent={true} />,
         );
       } else {
         tiles.push(<Tile key={j} letter="" />);

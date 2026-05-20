@@ -14,12 +14,7 @@ contract WordCircleStats {
 
     mapping(address => PlayerStats) public stats;
 
-    event GameRecorded(
-        address indexed player,
-        uint32 indexed gameId,
-        bool won,
-        uint8 guesses
-    );
+    event GameRecorded(address indexed player, uint32 indexed gameId, bool won, uint8 guesses);
 
     /// @notice Record a completed game result
     /// @param gameId The daily game number
@@ -70,13 +65,6 @@ contract WordCircleStats {
         )
     {
         PlayerStats storage s = stats[player];
-        return (
-            s.gamesPlayed,
-            s.gamesWon,
-            s.currentStreak,
-            s.maxStreak,
-            s.lastGameId,
-            s.guessDistribution
-        );
+        return (s.gamesPlayed, s.gamesWon, s.currentStreak, s.maxStreak, s.lastGameId, s.guessDistribution);
     }
 }

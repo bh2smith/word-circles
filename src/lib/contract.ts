@@ -1,6 +1,7 @@
 import { encodeFunctionData } from "viem";
 
-export const STATS_CONTRACT = "0xa4CBF2234A0a41C0F91CE43dfbEc2041e0A8D6D0" as const;
+export const STATS_CONTRACT =
+  "0xa4CBF2234A0a41C0F91CE43dfbEc2041e0A8D6D0" as const;
 
 export const statsAbi = [
   {
@@ -30,7 +31,11 @@ export const statsAbi = [
   },
 ] as const;
 
-export function encodeRecordGame(gameId: number, won: boolean, guesses: number): string {
+export function encodeRecordGame(
+  gameId: number,
+  won: boolean,
+  guesses: number,
+): string {
   return encodeFunctionData({
     abi: statsAbi,
     functionName: "recordGame",

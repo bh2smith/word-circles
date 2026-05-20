@@ -58,7 +58,8 @@ export default function StatsModal({
             </p>
             {answer && (
               <p className="text-neutral-400 mt-1">
-                The word was <span className="font-bold uppercase text-white">{answer}</span>
+                The word was{" "}
+                <span className="font-bold uppercase text-white">{answer}</span>
               </p>
             )}
           </div>

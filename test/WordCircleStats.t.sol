@@ -37,14 +37,7 @@ contract WordCircleStatsTest is Test {
         vm.prank(player);
         stats.recordGame(1, false, 6);
 
-        (
-            uint32 gamesPlayed,
-            uint32 gamesWon,
-            uint32 currentStreak,
-            ,
-            ,
-
-        ) = stats.getStats(player);
+        (uint32 gamesPlayed, uint32 gamesWon, uint32 currentStreak,,,) = stats.getStats(player);
 
         assertEq(gamesPlayed, 1);
         assertEq(gamesWon, 0);
@@ -58,7 +51,7 @@ contract WordCircleStatsTest is Test {
         stats.recordGame(3, true, 5);
         vm.stopPrank();
 
-        (, , uint32 currentStreak, uint32 maxStreak, , ) = stats.getStats(player);
+        (,, uint32 currentStreak, uint32 maxStreak,,) = stats.getStats(player);
         assertEq(currentStreak, 3);
         assertEq(maxStreak, 3);
     }
@@ -71,7 +64,7 @@ contract WordCircleStatsTest is Test {
         stats.recordGame(4, true, 1);
         vm.stopPrank();
 
-        (, , uint32 currentStreak, uint32 maxStreak, , ) = stats.getStats(player);
+        (,, uint32 currentStreak, uint32 maxStreak,,) = stats.getStats(player);
         assertEq(currentStreak, 1);
         assertEq(maxStreak, 2);
     }
@@ -84,7 +77,7 @@ contract WordCircleStatsTest is Test {
         stats.recordGame(4, true, 3);
         vm.stopPrank();
 
-        (, , uint32 currentStreak, uint32 maxStreak, , ) = stats.getStats(player);
+        (,, uint32 currentStreak, uint32 maxStreak,,) = stats.getStats(player);
         assertEq(currentStreak, 1);
         assertEq(maxStreak, 2);
     }
@@ -119,7 +112,7 @@ contract WordCircleStatsTest is Test {
         stats.recordGame(4, true, 6);
         vm.stopPrank();
 
-        (, , , , , uint32[6] memory dist) = stats.getStats(player);
+        (,,,,, uint32[6] memory dist) = stats.getStats(player);
         assertEq(dist[0], 2); // 2 games solved in 1 guess
         assertEq(dist[1], 0);
         assertEq(dist[2], 1); // 1 game solved in 3 guesses

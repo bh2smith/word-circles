@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "fmt": "prettier --write .",
+    "fmt:check": "prettier --check .",
+    "test": "bun test"
   },
   "dependencies": {
     "@aboutcircles/miniapp-sdk": "^0.1.30",
@@ -23,6 +26,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
+    "prettier": "^3.8.3",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
