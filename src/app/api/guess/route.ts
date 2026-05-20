@@ -1,11 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import {
-  evaluateGuess,
-  getAnswer,
-  isValidGuess,
-  MAX_GUESSES,
-  WORD_LENGTH,
-} from "@/lib/game";
+import { isValidGuess, MAX_GUESSES, WORD_LENGTH } from "@/lib/game";
+import { evaluateGuess, getAnswer } from "@/lib/game.server";
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
