@@ -1,4 +1,5 @@
 // Official Wordle answer list (2315 words) — SERVER ONLY
+// Source: https://gist.github.com/cfreshman/a03ef2cba789d8cf00c08f767e0fad7b
 export const ANSWERS: string[] = [
   "aback",
   "abase",

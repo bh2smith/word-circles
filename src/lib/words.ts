@@ -1,4 +1,6 @@
 // Full valid guess list — answers + additional accepted words (12972 words)
+// Answers: https://gist.github.com/cfreshman/a03ef2cba789d8cf00c08f767e0fad7b
+// Guesses: https://gist.github.com/cfreshman/cdcdf777450c5b5301e439061d29694c
 export const VALID_GUESSES: Set<string> = new Set([
   "aahed",
   "aalii",
