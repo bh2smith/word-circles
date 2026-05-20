@@ -25,8 +25,15 @@ export function getGameId(date: Date = new Date()): number {
   return Math.floor(diff / (1000 * 60 * 60 * 24));
 }
 
+function hashGameId(gameId: number): number {
+  let h = Math.imul(gameId, 2654435761);
+  h = Math.imul((h >>> 16) ^ h, 0x45d9f3b);
+  h = (h >>> 16) ^ h;
+  return h >>> 0;
+}
+
 export function getAnswer(gameId: number): string {
-  const index = ((gameId % ANSWERS.length) + ANSWERS.length) % ANSWERS.length;
+  const index = hashGameId(gameId) % ANSWERS.length;
   return ANSWERS[index];
 }
 
