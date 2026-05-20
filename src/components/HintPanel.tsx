@@ -6,16 +6,17 @@ import { filterRemainingWords } from "@/lib/hints";
 
 interface HintPanelProps {
   guesses: GuessResult[];
+  onSelectWord: (word: string) => void;
 }
 
-export default function HintPanel({ guesses }: HintPanelProps) {
+export default function HintPanel({ guesses, onSelectWord }: HintPanelProps) {
   const [open, setOpen] = useState(false);
   const remaining = useMemo(() => filterRemainingWords(guesses), [guesses]);
 
   if (guesses.length === 0) return null;
 
   return (
-    <div className="w-full max-w-lg">
+    <>
       <button
         onClick={() => setOpen((o) => !o)}
         className="flex items-center gap-2 px-3 py-2 text-sm text-neutral-400 hover:text-white transition-colors"
@@ -37,14 +38,49 @@ export default function HintPanel({ guesses }: HintPanelProps) {
         </span>
       </button>
       {open && (
-        <div className="mt-1 max-h-40 overflow-y-auto rounded bg-neutral-800 border border-neutral-700 px-3 py-2">
-          <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-neutral-300 font-mono">
-            {remaining.map((w) => (
-              <span key={w}>{w}</span>
-            ))}
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute inset-x-0 top-0 bottom-0 z-50 flex items-center justify-center pointer-events-none px-2">
+            <div className="pointer-events-auto w-full max-w-sm max-h-[70%] overflow-y-auto rounded-lg bg-neutral-900/95 border border-neutral-700 shadow-2xl backdrop-blur-sm p-4">
+              <div className="flex items-center justify-between mb-3 sticky top-0 bg-neutral-900/95 pb-2">
+                <span className="text-sm text-neutral-400">
+                  {remaining.length.toLocaleString()} possible word
+                  {remaining.length !== 1 ? "s" : ""}
+                </span>
+                <button
+                  onClick={() => setOpen(false)}
+                  className="text-neutral-500 hover:text-white transition-colors p-1"
+                >
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <path d="M4 4l8 8M12 4l-8 8" />
+                  </svg>
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {remaining.map((w) => (
+                  <button
+                    key={w}
+                    onClick={() => {
+                      onSelectWord(w);
+                      setOpen(false);
+                    }}
+                    className="px-2 py-1 text-xs font-mono rounded bg-neutral-800 text-neutral-300 hover:bg-neutral-700 hover:text-white transition-colors"
+                  >
+                    {w}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
-        </div>
+        </>
       )}
-    </div>
+    </>
   );
 }

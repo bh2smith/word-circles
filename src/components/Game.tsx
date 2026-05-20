@@ -245,7 +245,7 @@ export default function Game() {
   }
 
   return (
-    <div className="flex flex-col items-center gap-4 sm:gap-6 w-full max-w-lg mx-auto px-2">
+    <div className="relative flex flex-col items-center gap-4 sm:gap-6 w-full max-w-lg mx-auto px-2">
       {/* Header */}
       <div className="flex items-center justify-between w-full">
         <div className="w-10" />
@@ -290,7 +290,7 @@ export default function Game() {
 
       {/* Hint + Submit below keyboard */}
       <div className="flex items-start justify-between w-full max-w-lg gap-2">
-        <HintPanel guesses={guesses} />
+        <HintPanel guesses={guesses} onSelectWord={setCurrentGuess} />
         {status === "playing" && (
           <button
             onClick={submitGuess}
