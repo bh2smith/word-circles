@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Board from "./Board";
 import Keyboard, { computeLetterStates } from "./Keyboard";
 import Toast from "./Toast";
+import HintPanel from "./HintPanel";
 import StatsModal, { EMPTY_STATS, type Stats } from "./StatsModal";
 import type { GuessResult, LetterResult } from "@/lib/game";
 import { MAX_GUESSES, WORD_LENGTH } from "@/lib/game";
@@ -286,6 +287,20 @@ export default function Game() {
         onKey={onKey}
         disabled={status !== "playing" || submitting}
       />
+
+      {/* Hint + Submit below keyboard */}
+      <div className="flex items-start justify-between w-full max-w-lg gap-2">
+        <HintPanel guesses={guesses} />
+        {status === "playing" && (
+          <button
+            onClick={submitGuess}
+            disabled={currentGuess.length !== WORD_LENGTH || submitting}
+            className="shrink-0 px-4 py-2 text-sm font-semibold rounded bg-green-600 text-white disabled:opacity-30 disabled:cursor-not-allowed hover:bg-green-500 transition-colors"
+          >
+            Submit
+          </button>
+        )}
+      </div>
 
       {/* Stats Modal */}
       <StatsModal
