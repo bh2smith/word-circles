@@ -24,6 +24,9 @@
 /cache/
 /lib/
 
+# rust
+/backend/target/
+
 # misc
 .DS_Store
 *.pem
