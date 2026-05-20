@@ -31,8 +31,15 @@ pub fn get_game_id() -> u32 {
     ((now - EPOCH_SECS) / SECS_PER_DAY) as u32
 }
 
+pub fn answer_index(game_id: u32) -> usize {
+    hash_game_id(game_id) as usize % ANSWERS.len()
+}
+
 pub fn get_answer(game_id: u32) -> &'static str {
-    let index = hash_game_id(game_id) as usize % ANSWERS.len();
+    ANSWERS[answer_index(game_id)]
+}
+
+pub fn get_answer_by_index(index: usize) -> &'static str {
     ANSWERS[index]
 }
 

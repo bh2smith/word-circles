@@ -1,0 +1,31 @@
+use serde::Serialize;
+
+#[derive(Debug, Clone, Serialize)]
+pub struct GameRecord {
+    pub id: String,
+    pub game_type: String,
+    pub word_index: usize,
+    pub salt: Option<String>,
+    pub commitment: Option<String>,
+    pub status: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PlayerRecord {
+    pub id: i64,
+    pub address: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct GuessRecord {
+    pub id: Option<i64>,
+    pub game_id: String,
+    pub player_id: i64,
+    pub guess_number: u32,
+    pub word: String,
+    pub results: String,
+    pub is_correct: bool,
+    pub created_at: Option<String>,
+}

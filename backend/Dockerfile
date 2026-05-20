@@ -8,5 +8,7 @@ FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /app/target/release/word-circles-backend /usr/local/bin/
 ENV PORT=3001
+ENV DATABASE_PATH=/data/word-circles.db
+VOLUME /data
 EXPOSE 3001
 CMD ["word-circles-backend"]
