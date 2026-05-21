@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-/// @title WordCircleStats — on-chain game statistics for Word Circle
+/// @title WordCircleStats — on-chain game statistics for Word Circles
 contract WordCircleStats {
     struct PlayerStats {
         uint32 gamesPlayed;

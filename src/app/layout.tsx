@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Word Circle",
+  title: "Word Circles",
   description: "A daily word game on Circles",
 };
 

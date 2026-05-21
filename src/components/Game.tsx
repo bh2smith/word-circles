@@ -276,7 +276,7 @@ export default function Game() {
           </svg>
         </button>
         <h1 className="text-2xl sm:text-3xl font-bold tracking-wider text-white">
-          WORD CIRCLE
+          WORD CIRCLES
         </h1>
         <button
           onClick={() => setShowStats(true)}
