@@ -202,3 +202,105 @@ async fn last_guess_reveals_answer() {
     assert!(body["gameOver"].as_bool().unwrap());
     assert!(body["answer"].is_string());
 }
+
+#[tokio::test]
+async fn leaderboard_empty() {
+    let resp = app()
+        .oneshot(
+            Request::get("/api/leaderboard")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body = json_body(resp).await;
+    assert!(body.as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn leaderboard_with_player_data() {
+    let app = app();
+
+    let game_body = json_body(
+        app.clone()
+            .oneshot(Request::get("/api/game").body(Body::empty()).unwrap())
+            .await
+            .unwrap(),
+    )
+    .await;
+    let game_id = game_body["gameId"].as_u64().unwrap();
+
+    app.clone()
+        .oneshot(guess_request_with_player(game_id, "crane", 0, "0xplayer1"))
+        .await
+        .unwrap();
+
+    let resp = app
+        .oneshot(
+            Request::get("/api/leaderboard")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body = json_body(resp).await;
+    let entries = body.as_array().unwrap();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0]["address"], "0xplayer1");
+    assert_eq!(entries[0]["games_played"], 1);
+}
+
+#[tokio::test]
+async fn daily_leaderboard_empty() {
+    let resp = app()
+        .oneshot(
+            Request::get("/api/leaderboard/daily?gameId=999")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body = json_body(resp).await;
+    assert!(body.as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn daily_leaderboard_with_results() {
+    let app = app();
+
+    let game_body = json_body(
+        app.clone()
+            .oneshot(Request::get("/api/game").body(Body::empty()).unwrap())
+            .await
+            .unwrap(),
+    )
+    .await;
+    let game_id = game_body["gameId"].as_u64().unwrap();
+
+    app.clone()
+        .oneshot(guess_request_with_player(game_id, "crane", 0, "0xdaily1"))
+        .await
+        .unwrap();
+
+    let resp = app
+        .oneshot(
+            Request::get(&format!("/api/leaderboard/daily?gameId={game_id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body = json_body(resp).await;
+    let results = body.as_array().unwrap();
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0]["address"], "0xdaily1");
+    assert_eq!(results[0]["guesses"], 1);
+}

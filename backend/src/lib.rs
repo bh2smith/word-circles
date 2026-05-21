@@ -4,7 +4,7 @@ mod words;
 
 use axum::{
     Router,
-    extract::{Json, State},
+    extract::{Json, Query, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{get, post},
@@ -210,6 +210,67 @@ async fn post_guess<R: GameRepository>(
     )
 }
 
+#[derive(Deserialize)]
+struct LeaderboardQuery {
+    #[serde(default = "default_limit")]
+    limit: u32,
+    #[serde(default)]
+    offset: u32,
+}
+
+fn default_limit() -> u32 {
+    20
+}
+
+#[derive(Deserialize)]
+struct DailyQuery {
+    #[serde(rename = "gameId")]
+    game_id: u32,
+}
+
+async fn get_leaderboard<R: GameRepository>(
+    State(state): State<Arc<AppState<R>>>,
+    Query(query): Query<LeaderboardQuery>,
+) -> impl IntoResponse {
+    match state.repo.get_leaderboard(query.limit, query.offset).await {
+        Ok(entries) => (StatusCode::OK, Json(serde_json::to_value(entries).unwrap())),
+        Err(e) => {
+            error!("Failed to fetch leaderboard: {e}");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(
+                    serde_json::to_value(ErrorResponse {
+                        error: "Failed to fetch leaderboard".into(),
+                    })
+                    .unwrap(),
+                ),
+            )
+        }
+    }
+}
+
+async fn get_daily_leaderboard<R: GameRepository>(
+    State(state): State<Arc<AppState<R>>>,
+    Query(query): Query<DailyQuery>,
+) -> impl IntoResponse {
+    let game_id = query.game_id.to_string();
+    match state.repo.get_daily_results(&game_id).await {
+        Ok(results) => (StatusCode::OK, Json(serde_json::to_value(results).unwrap())),
+        Err(e) => {
+            error!("Failed to fetch daily results: {e}");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(
+                    serde_json::to_value(ErrorResponse {
+                        error: "Failed to fetch daily results".into(),
+                    })
+                    .unwrap(),
+                ),
+            )
+        }
+    }
+}
+
 async fn health() -> &'static str {
     "ok"
 }
@@ -220,6 +281,8 @@ pub fn build_router<R: GameRepository>(repo: R) -> Router {
         .route("/health", get(health))
         .route("/api/game", get(get_game::<R>))
         .route("/api/guess", post(post_guess::<R>))
+        .route("/api/leaderboard", get(get_leaderboard::<R>))
+        .route("/api/leaderboard/daily", get(get_daily_leaderboard::<R>))
         .layer(CorsLayer::permissive())
         .with_state(state)
 }

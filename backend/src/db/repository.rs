@@ -1,4 +1,4 @@
-use super::models::{GameRecord, GuessRecord, PlayerRecord};
+use super::models::{DailyResult, GameRecord, GuessRecord, LeaderboardEntry, PlayerRecord};
 use std::fmt;
 use std::future::Future;
 
@@ -59,4 +59,15 @@ pub trait GameRepository: Send + Sync + 'static {
         game_id: &str,
         player_id: i64,
     ) -> impl Future<Output = Result<u32, RepositoryError>> + Send;
+
+    fn get_leaderboard(
+        &self,
+        limit: u32,
+        offset: u32,
+    ) -> impl Future<Output = Result<Vec<LeaderboardEntry>, RepositoryError>> + Send;
+
+    fn get_daily_results(
+        &self,
+        game_id: &str,
+    ) -> impl Future<Output = Result<Vec<DailyResult>, RepositoryError>> + Send;
 }

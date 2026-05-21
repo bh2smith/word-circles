@@ -1,4 +1,4 @@
-use super::models::{GameRecord, GuessRecord, PlayerRecord};
+use super::models::{DailyResult, GameRecord, GuessRecord, LeaderboardEntry, PlayerRecord};
 use super::repository::{GameRepository, RepositoryError};
 use rusqlite::{Connection, OptionalExtension, params};
 use std::sync::{Arc, Mutex};
@@ -200,6 +200,84 @@ impl GameRepository for SqliteRepository {
                 |row| row.get::<_, u32>(0),
             )
             .map_err(|e| RepositoryError::Internal(e.to_string()))
+        })
+        .await
+        .map_err(|e| RepositoryError::Internal(e.to_string()))?
+    }
+
+    async fn get_leaderboard(
+        &self,
+        limit: u32,
+        offset: u32,
+    ) -> Result<Vec<LeaderboardEntry>, RepositoryError> {
+        let conn = self.conn.clone();
+        tokio::task::spawn_blocking(move || {
+            let conn = conn.lock().unwrap();
+            let mut stmt = conn
+                .prepare(
+                    "SELECT p.address,
+                            SUM(CASE WHEN g.is_correct = 1 THEN 1 ELSE 0 END) AS wins,
+                            COUNT(DISTINCT g.game_id) AS games_played,
+                            COALESCE(
+                                AVG(CASE WHEN g.is_correct = 1 THEN g.guess_number + 1 END),
+                                0.0
+                            ) AS avg_guesses
+                     FROM guesses g
+                     JOIN players p ON p.id = g.player_id
+                     GROUP BY g.player_id
+                     ORDER BY wins DESC, avg_guesses ASC, games_played DESC
+                     LIMIT ?1 OFFSET ?2",
+                )
+                .map_err(|e| RepositoryError::Internal(e.to_string()))?;
+
+            let rows = stmt
+                .query_map(params![limit, offset], |row| {
+                    Ok(LeaderboardEntry {
+                        address: row.get(0)?,
+                        wins: row.get(1)?,
+                        games_played: row.get(2)?,
+                        avg_guesses: row.get(3)?,
+                    })
+                })
+                .map_err(|e| RepositoryError::Internal(e.to_string()))?;
+
+            rows.collect::<Result<Vec<_>, _>>()
+                .map_err(|e| RepositoryError::Internal(e.to_string()))
+        })
+        .await
+        .map_err(|e| RepositoryError::Internal(e.to_string()))?
+    }
+
+    async fn get_daily_results(&self, game_id: &str) -> Result<Vec<DailyResult>, RepositoryError> {
+        let conn = self.conn.clone();
+        let game_id = game_id.to_string();
+        tokio::task::spawn_blocking(move || {
+            let conn = conn.lock().unwrap();
+            let mut stmt = conn
+                .prepare(
+                    "SELECT p.address,
+                            MAX(g.guess_number) + 1 AS guesses,
+                            MAX(g.is_correct) AS solved
+                     FROM guesses g
+                     JOIN players p ON p.id = g.player_id
+                     WHERE g.game_id = ?1
+                     GROUP BY g.player_id
+                     ORDER BY solved DESC, guesses ASC",
+                )
+                .map_err(|e| RepositoryError::Internal(e.to_string()))?;
+
+            let rows = stmt
+                .query_map(params![game_id], |row| {
+                    Ok(DailyResult {
+                        address: row.get(0)?,
+                        guesses: row.get(1)?,
+                        solved: row.get::<_, i32>(2)? != 0,
+                    })
+                })
+                .map_err(|e| RepositoryError::Internal(e.to_string()))?;
+
+            rows.collect::<Result<Vec<_>, _>>()
+                .map_err(|e| RepositoryError::Internal(e.to_string()))
         })
         .await
         .map_err(|e| RepositoryError::Internal(e.to_string()))?

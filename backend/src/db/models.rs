@@ -19,6 +19,21 @@ pub struct PlayerRecord {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct LeaderboardEntry {
+    pub address: String,
+    pub wins: u32,
+    pub games_played: u32,
+    pub avg_guesses: f64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DailyResult {
+    pub address: String,
+    pub guesses: u32,
+    pub solved: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct GuessRecord {
     pub id: Option<i64>,
     pub game_id: String,

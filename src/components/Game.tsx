@@ -6,6 +6,7 @@ import Keyboard, { computeLetterStates } from "./Keyboard";
 import Toast from "./Toast";
 import HintPanel from "./HintPanel";
 import StatsModal, { EMPTY_STATS, type Stats } from "./StatsModal";
+import Leaderboard from "./Leaderboard";
 import type { GuessResult, LetterResult } from "@/lib/game";
 import { MAX_GUESSES, WORD_LENGTH } from "@/lib/game";
 import { isMiniappMode, initCircles, submitGameResult } from "@/lib/circles";
@@ -56,6 +57,7 @@ export default function Game() {
   const [toast, setToast] = useState<string | null>(null);
   const [stats, setStats] = useState<Stats>(EMPTY_STATS);
   const [showStats, setShowStats] = useState(false);
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   // Load game state and fetch current game ID
@@ -248,7 +250,25 @@ export default function Game() {
     <div className="relative flex flex-col items-center gap-4 sm:gap-6 w-full max-w-lg mx-auto px-2">
       {/* Header */}
       <div className="flex items-center justify-between w-full">
-        <div className="w-10" />
+        <button
+          onClick={() => setShowLeaderboard(true)}
+          className="w-10 h-10 flex items-center justify-center text-white hover:bg-neutral-700 rounded transition-colors"
+          aria-label="Leaderboard"
+        >
+          <svg
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
+            <path d="M12 15l-3 3h6l-3-3z" />
+            <rect x="3" y="10" width="5" height="8" rx="1" />
+            <rect x="9.5" y="5" width="5" height="13" rx="1" />
+            <rect x="16" y="8" width="5" height="10" rx="1" />
+          </svg>
+        </button>
         <h1 className="text-2xl sm:text-3xl font-bold tracking-wider text-white">
           WORD CIRCLE
         </h1>
@@ -310,6 +330,13 @@ export default function Game() {
         gameOver={status !== "playing"}
         won={status === "won"}
         answer={answer}
+      />
+
+      {/* Leaderboard Modal */}
+      <Leaderboard
+        open={showLeaderboard}
+        onClose={() => setShowLeaderboard(false)}
+        gameId={gameId}
       />
     </div>
   );
