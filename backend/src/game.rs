@@ -55,11 +55,10 @@ pub fn generate_salt() -> [u8; 32] {
     salt
 }
 
-pub fn compute_commitment(game_id: &str, word_index: usize, salt: &[u8; 32]) -> [u8; 32] {
+pub fn compute_commitment(game_id: u32, word_index: usize, salt: &[u8; 32]) -> [u8; 32] {
     let mut hasher = Keccak256::new();
     let mut game_id_padded = [0u8; 32];
-    let bytes = game_id.as_bytes();
-    game_id_padded[32 - bytes.len()..].copy_from_slice(bytes);
+    game_id_padded[28..32].copy_from_slice(&game_id.to_be_bytes());
     hasher.update(game_id_padded);
     let mut index_bytes = [0u8; 32];
     index_bytes[24..].copy_from_slice(&(word_index as u64).to_be_bytes());
@@ -189,8 +188,8 @@ mod tests {
     #[test]
     fn commitment_deterministic() {
         let salt = [0xabu8; 32];
-        let c1 = compute_commitment("42", 100, &salt);
-        let c2 = compute_commitment("42", 100, &salt);
+        let c1 = compute_commitment(42, 100, &salt);
+        let c2 = compute_commitment(42, 100, &salt);
         assert_eq!(c1, c2);
     }
 
@@ -198,8 +197,8 @@ mod tests {
     fn commitment_changes_with_salt() {
         let s1 = [0x01u8; 32];
         let s2 = [0x02u8; 32];
-        let c1 = compute_commitment("42", 100, &s1);
-        let c2 = compute_commitment("42", 100, &s2);
+        let c1 = compute_commitment(42, 100, &s1);
+        let c2 = compute_commitment(42, 100, &s2);
         assert_ne!(c1, c2);
     }
 }

@@ -11,12 +11,13 @@ use axum::{
 };
 use db::{
     models::{GameRecord, GuessRecord},
-    repository::GameRepository,
+    repository::{GameRepository, RepositoryError},
     sqlite::SqliteRepository,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tower_http::cors::CorsLayer;
+use tracing::error;
 
 struct AppState<R: GameRepository> {
     repo: R,
@@ -55,34 +56,62 @@ struct ErrorResponse {
     error: String,
 }
 
-async fn get_game<R: GameRepository>(State(state): State<Arc<AppState<R>>>) -> Json<GameResponse> {
+async fn get_game<R: GameRepository>(
+    State(state): State<Arc<AppState<R>>>,
+) -> impl IntoResponse {
     let game_id = game::get_game_id();
     let game_id_str = game_id.to_string();
 
-    if state
-        .repo
-        .get_game(&game_id_str)
-        .await
-        .ok()
-        .flatten()
-        .is_none()
-    {
-        let word_index = game::answer_index(game_id);
-        let salt = game::generate_salt();
-        let commitment = game::compute_commitment(&game_id_str, word_index, &salt);
-        let record = GameRecord {
-            id: game_id_str,
-            game_type: "daily".into(),
-            word_index,
-            salt: Some(hex::encode(salt)),
-            commitment: Some(hex::encode(commitment)),
-            status: "active".into(),
-            created_at: String::new(),
-        };
-        let _ = state.repo.create_game(&record).await;
+    match state.repo.get_game(&game_id_str).await {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            let word_index = game::answer_index(game_id);
+            let salt = game::generate_salt();
+            let commitment = game::compute_commitment(game_id, word_index, &salt);
+            let record = GameRecord {
+                id: game_id_str.clone(),
+                game_type: "daily".into(),
+                word_index,
+                salt: Some(hex::encode(salt)),
+                commitment: Some(hex::encode(commitment)),
+                status: "active".into(),
+                created_at: String::new(),
+            };
+            match state.repo.create_game(&record).await {
+                Ok(()) => {}
+                Err(RepositoryError::Conflict(_)) => {}
+                Err(e) => {
+                    error!("Failed to create game {game_id_str}: {e}");
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(
+                            serde_json::to_value(ErrorResponse {
+                                error: "Failed to initialize game".into(),
+                            })
+                            .unwrap(),
+                        ),
+                    );
+                }
+            }
+        }
+        Err(e) => {
+            error!("Failed to fetch game {game_id_str}: {e}");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(
+                    serde_json::to_value(ErrorResponse {
+                        error: "Failed to fetch game".into(),
+                    })
+                    .unwrap(),
+                ),
+            );
+        }
     }
 
-    Json(GameResponse { game_id })
+    (
+        StatusCode::OK,
+        Json(serde_json::to_value(GameResponse { game_id }).unwrap()),
+    )
 }
 
 async fn post_guess<R: GameRepository>(
@@ -151,14 +180,18 @@ async fn post_guess<R: GameRepository>(
                 is_correct: won,
                 created_at: None,
             };
-            let _ = state.repo.record_guess(&guess_record).await;
-        }
-
-        if game_over {
-            let _ = state
-                .repo
-                .update_game_status(&game_id_str, "completed")
-                .await;
+            if let Err(e) = state.repo.record_guess(&guess_record).await {
+                error!("Failed to record guess for game {game_id_str}: {e}");
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(
+                        serde_json::to_value(ErrorResponse {
+                            error: "Failed to record guess".into(),
+                        })
+                        .unwrap(),
+                    ),
+                );
+            }
         }
     }
 
@@ -186,6 +219,7 @@ async fn health() -> &'static str {
 
 #[tokio::main]
 async fn main() {
+    tracing_subscriber::fmt::init();
     let port = std::env::var("PORT").unwrap_or_else(|_| "3001".into());
     let db_path = std::env::var("DATABASE_PATH").unwrap_or_else(|_| "word-circles.db".into());
     let addr = format!("0.0.0.0:{port}");

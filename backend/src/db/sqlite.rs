@@ -1,6 +1,6 @@
 use super::models::{GameRecord, GuessRecord, PlayerRecord};
 use super::repository::{GameRepository, RepositoryError};
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, OptionalExtension, params};
 use std::sync::{Arc, Mutex};
 
 pub struct SqliteRepository {
@@ -49,7 +49,7 @@ impl GameRepository for SqliteRepository {
             Ok(())
         })
         .await
-        .unwrap()
+        .map_err(|e| RepositoryError::Internal(e.to_string()))?
     }
 
     async fn get_game(&self, game_id: &str) -> Result<Option<GameRecord>, RepositoryError> {
@@ -79,7 +79,7 @@ impl GameRepository for SqliteRepository {
             Ok(result)
         })
         .await
-        .unwrap()
+        .map_err(|e| RepositoryError::Internal(e.to_string()))?
     }
 
     async fn update_game_status(&self, game_id: &str, status: &str) -> Result<(), RepositoryError> {
@@ -100,7 +100,7 @@ impl GameRepository for SqliteRepository {
             Ok(())
         })
         .await
-        .unwrap()
+        .map_err(|e| RepositoryError::Internal(e.to_string()))?
     }
 
     async fn get_or_create_player(&self, address: &str) -> Result<PlayerRecord, RepositoryError> {
@@ -128,7 +128,7 @@ impl GameRepository for SqliteRepository {
             .map_err(|e| RepositoryError::Internal(e.to_string()))
         })
         .await
-        .unwrap()
+        .map_err(|e| RepositoryError::Internal(e.to_string()))?
     }
 
     async fn record_guess(&self, guess: &GuessRecord) -> Result<(), RepositoryError> {
@@ -151,7 +151,7 @@ impl GameRepository for SqliteRepository {
             Ok(())
         })
         .await
-        .unwrap()
+        .map_err(|e| RepositoryError::Internal(e.to_string()))?
     }
 
     async fn get_guesses(
@@ -186,7 +186,7 @@ impl GameRepository for SqliteRepository {
                 .map_err(|e| RepositoryError::Internal(e.to_string()))
         })
         .await
-        .unwrap()
+        .map_err(|e| RepositoryError::Internal(e.to_string()))?
     }
 
     async fn get_guess_count(&self, game_id: &str, player_id: i64) -> Result<u32, RepositoryError> {
@@ -202,21 +202,7 @@ impl GameRepository for SqliteRepository {
             .map_err(|e| RepositoryError::Internal(e.to_string()))
         })
         .await
-        .unwrap()
-    }
-}
-
-trait OptionalExt<T> {
-    fn optional(self) -> Result<Option<T>, rusqlite::Error>;
-}
-
-impl<T> OptionalExt<T> for Result<T, rusqlite::Error> {
-    fn optional(self) -> Result<Option<T>, rusqlite::Error> {
-        match self {
-            Ok(val) => Ok(Some(val)),
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(e),
-        }
+        .map_err(|e| RepositoryError::Internal(e.to_string()))?
     }
 }
 
