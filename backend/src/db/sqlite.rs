@@ -22,8 +22,38 @@ impl SqliteRepository {
 
     fn run_migrations(&self) -> Result<(), RepositoryError> {
         let conn = self.conn.lock().unwrap();
-        conn.execute_batch(include_str!("migrations/001_initial.sql"))
-            .map_err(|e| RepositoryError::Internal(e.to_string()))?;
+
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS schema_migrations (
+                version INTEGER PRIMARY KEY,
+                applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+            )",
+        )
+        .map_err(|e| RepositoryError::Internal(e.to_string()))?;
+
+        let migrations: &[(i64, &str)] = &[(1, include_str!("migrations/001_initial.sql"))];
+
+        for &(version, sql) in migrations {
+            let applied: bool = conn
+                .query_row(
+                    "SELECT COUNT(*) > 0 FROM schema_migrations WHERE version = ?1",
+                    params![version],
+                    |row| row.get(0),
+                )
+                .map_err(|e| RepositoryError::Internal(e.to_string()))?;
+
+            if !applied {
+                conn.execute_batch(sql)
+                    .map_err(|e| RepositoryError::Internal(e.to_string()))?;
+                conn.execute(
+                    "INSERT INTO schema_migrations (version) VALUES (?1)",
+                    params![version],
+                )
+                .map_err(|e| RepositoryError::Internal(e.to_string()))?;
+                tracing::info!("Applied migration {version}");
+            }
+        }
+
         Ok(())
     }
 }
