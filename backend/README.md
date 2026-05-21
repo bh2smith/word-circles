@@ -17,10 +17,10 @@ The server starts on `http://localhost:3001`. SQLite database is created at `./w
 
 ### Environment variables
 
-| Variable        | Default            | Description               |
-|-----------------|--------------------|---------------------------|
-| `PORT`          | `3001`             | Server listen port        |
-| `DATABASE_PATH` | `word-circles.db`  | SQLite database file path |
+| Variable        | Default           | Description               |
+| --------------- | ----------------- | ------------------------- |
+| `PORT`          | `3001`            | Server listen port        |
+| `DATABASE_PATH` | `word-circles.db` | SQLite database file path |
 
 ## Run tests
 
