@@ -70,4 +70,11 @@ pub trait GameRepository: Send + Sync + 'static {
         &self,
         game_id: &str,
     ) -> impl Future<Output = Result<Vec<DailyResult>, RepositoryError>> + Send;
+
+    fn get_indexer_cursor(&self) -> impl Future<Output = Result<u64, RepositoryError>> + Send;
+
+    fn set_indexer_cursor(
+        &self,
+        block_number: u64,
+    ) -> impl Future<Output = Result<(), RepositoryError>> + Send;
 }

@@ -31,7 +31,10 @@ impl SqliteRepository {
         )
         .map_err(|e| RepositoryError::Internal(e.to_string()))?;
 
-        let migrations: &[(i64, &str)] = &[(1, include_str!("migrations/001_initial.sql"))];
+        let migrations: &[(i64, &str)] = &[
+            (1, include_str!("migrations/001_initial.sql")),
+            (2, include_str!("migrations/002_indexer.sql")),
+        ];
 
         for &(version, sql) in migrations {
             let applied: bool = conn
@@ -308,6 +311,40 @@ impl GameRepository for SqliteRepository {
 
             rows.collect::<Result<Vec<_>, _>>()
                 .map_err(|e| RepositoryError::Internal(e.to_string()))
+        })
+        .await
+        .map_err(|e| RepositoryError::Internal(e.to_string()))?
+    }
+
+    async fn get_indexer_cursor(&self) -> Result<u64, RepositoryError> {
+        let conn = self.conn.clone();
+        tokio::task::spawn_blocking(move || {
+            let conn = conn.lock().unwrap();
+            conn.query_row(
+                "SELECT block_number FROM indexer_cursor WHERE id = 1",
+                [],
+                |row| row.get::<_, u64>(0),
+            )
+            .optional()
+            .map_err(|e| RepositoryError::Internal(e.to_string()))
+            .map(|opt| opt.unwrap_or(0))
+        })
+        .await
+        .map_err(|e| RepositoryError::Internal(e.to_string()))?
+    }
+
+    async fn set_indexer_cursor(&self, block_number: u64) -> Result<(), RepositoryError> {
+        let conn = self.conn.clone();
+        tokio::task::spawn_blocking(move || {
+            let conn = conn.lock().unwrap();
+            conn.execute(
+                "INSERT INTO indexer_cursor (id, block_number) VALUES (1, ?1)
+                 ON CONFLICT(id) DO UPDATE SET block_number = ?1,
+                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')",
+                params![block_number],
+            )
+            .map_err(|e| RepositoryError::Internal(e.to_string()))?;
+            Ok(())
         })
         .await
         .map_err(|e| RepositoryError::Internal(e.to_string()))?

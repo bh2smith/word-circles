@@ -6,10 +6,24 @@ services:
       context: api
       dockerfile: Dockerfile
     restart: unless-stopped
+    environment:
+      - ARAK_DB_PATH=/data/arak.db
     volumes:
       - data:/data
     ports:
       - "3001:3001"
+    depends_on:
+      - indexer
+
+  indexer:
+    image: ghcr.io/bh2smith/arak:main
+    restart: unless-stopped
+    entrypoint: ["/usr/bin/tini", "--"]
+    command: ["/opt/arak/arak"]
+    working_dir: /data
+    volumes:
+      - data:/data
+      - ./arak.toml:/data/arak.toml:ro
 
 volumes:
   data: {}

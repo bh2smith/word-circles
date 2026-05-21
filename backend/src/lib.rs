@@ -1,5 +1,6 @@
 pub mod db;
 pub mod game;
+pub mod indexer;
 mod words;
 
 use axum::{
