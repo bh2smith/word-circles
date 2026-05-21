@@ -9,7 +9,12 @@ import StatsModal, { EMPTY_STATS, type Stats } from "./StatsModal";
 import Leaderboard from "./Leaderboard";
 import type { GuessResult, LetterResult } from "@/lib/game";
 import { MAX_GUESSES, WORD_LENGTH } from "@/lib/game";
-import { isMiniappMode, initCircles, submitGameResult } from "@/lib/circles";
+import {
+  isMiniappMode,
+  initCircles,
+  submitGameResult,
+  getConnectedAddress,
+} from "@/lib/circles";
 import { STATS_CONTRACT, encodeRecordGame } from "@/lib/contract";
 
 interface SavedGame {
@@ -137,6 +142,7 @@ export default function Game() {
           guess: currentGuess,
           gameId,
           guessNumber: guesses.length,
+          player: getConnectedAddress() ?? undefined,
         }),
       });
 
