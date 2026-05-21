@@ -1,6 +1,12 @@
-import { NextResponse } from "next/server";
-import { getGameId } from "@/lib/game";
+const API_URL = process.env.API_URL;
 
 export async function GET() {
-  return NextResponse.json({ gameId: getGameId() });
+  if (!API_URL) {
+    return new Response("API_URL not configured", { status: 503 });
+  }
+  const res = await fetch(`${API_URL}/api/game`);
+  return new Response(res.body, {
+    status: res.status,
+    headers: { "Content-Type": "application/json" },
+  });
 }
