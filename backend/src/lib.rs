@@ -55,9 +55,7 @@ struct ErrorResponse {
     error: String,
 }
 
-async fn get_game<R: GameRepository>(
-    State(state): State<Arc<AppState<R>>>,
-) -> impl IntoResponse {
+async fn get_game<R: GameRepository>(State(state): State<Arc<AppState<R>>>) -> impl IntoResponse {
     let game_id = game::get_game_id();
     let game_id_str = game_id.to_string();
 

@@ -121,10 +121,7 @@ async fn valid_guess_returns_results() {
 
 #[tokio::test]
 async fn invalid_word_returns_400() {
-    let resp = app()
-        .oneshot(guess_request(1, "zzzzz", 0))
-        .await
-        .unwrap();
+    let resp = app().oneshot(guess_request(1, "zzzzz", 0)).await.unwrap();
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 
     let body = json_body(resp).await;
@@ -133,10 +130,7 @@ async fn invalid_word_returns_400() {
 
 #[tokio::test]
 async fn too_short_returns_400() {
-    let resp = app()
-        .oneshot(guess_request(1, "hi", 0))
-        .await
-        .unwrap();
+    let resp = app().oneshot(guess_request(1, "hi", 0)).await.unwrap();
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 
     let body = json_body(resp).await;
@@ -145,10 +139,7 @@ async fn too_short_returns_400() {
 
 #[tokio::test]
 async fn guess_number_out_of_range_returns_400() {
-    let resp = app()
-        .oneshot(guess_request(1, "crane", 6))
-        .await
-        .unwrap();
+    let resp = app().oneshot(guess_request(1, "crane", 6)).await.unwrap();
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 
     let body = json_body(resp).await;
@@ -181,10 +172,7 @@ async fn guess_with_player_persists() {
 
 #[tokio::test]
 async fn uppercase_guess_is_normalized() {
-    let resp = app()
-        .oneshot(guess_request(1, "CRANE", 0))
-        .await
-        .unwrap();
+    let resp = app().oneshot(guess_request(1, "CRANE", 0)).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 
     let body = json_body(resp).await;
