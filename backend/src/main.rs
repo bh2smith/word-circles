@@ -68,12 +68,14 @@ async fn get_game<R: GameRepository>(State(state): State<Arc<AppState<R>>>) -> J
         .is_none()
     {
         let word_index = game::answer_index(game_id);
+        let salt = game::generate_salt();
+        let commitment = game::compute_commitment(&game_id_str, word_index, &salt);
         let record = GameRecord {
             id: game_id_str,
             game_type: "daily".into(),
             word_index,
-            salt: None,
-            commitment: None,
+            salt: Some(hex::encode(salt)),
+            commitment: Some(hex::encode(commitment)),
             status: "active".into(),
             created_at: String::new(),
         };

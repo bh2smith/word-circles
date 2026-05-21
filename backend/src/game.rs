@@ -1,5 +1,7 @@
 use crate::words::{ANSWERS, VALID_GUESSES};
+use rand::Rng;
 use serde::Serialize;
+use sha3::{Digest, Keccak256};
 
 pub const WORD_LENGTH: usize = 5;
 pub const MAX_GUESSES: usize = 6;
@@ -41,6 +43,29 @@ pub fn get_answer(game_id: u32) -> &'static str {
 
 pub fn get_answer_by_index(index: usize) -> &'static str {
     ANSWERS[index]
+}
+
+pub fn random_word_index() -> usize {
+    rand::rng().random_range(0..ANSWERS.len())
+}
+
+pub fn generate_salt() -> [u8; 32] {
+    let mut salt = [0u8; 32];
+    rand::rng().fill(&mut salt);
+    salt
+}
+
+pub fn compute_commitment(game_id: &str, word_index: usize, salt: &[u8; 32]) -> [u8; 32] {
+    let mut hasher = Keccak256::new();
+    let mut game_id_padded = [0u8; 32];
+    let bytes = game_id.as_bytes();
+    game_id_padded[32 - bytes.len()..].copy_from_slice(bytes);
+    hasher.update(game_id_padded);
+    let mut index_bytes = [0u8; 32];
+    index_bytes[24..].copy_from_slice(&(word_index as u64).to_be_bytes());
+    hasher.update(index_bytes);
+    hasher.update(salt);
+    hasher.finalize().into()
 }
 
 pub fn is_valid_guess(word: &str) -> bool {
@@ -138,5 +163,43 @@ mod tests {
         assert_eq!(hash_game_id(42), 301225621);
         assert_eq!(hash_game_id(100), 3925899253);
         assert_eq!(hash_game_id(504), 2474460488);
+    }
+
+    #[test]
+    fn random_word_index_in_bounds() {
+        for _ in 0..100 {
+            let idx = random_word_index();
+            assert!(idx < ANSWERS.len());
+        }
+    }
+
+    #[test]
+    fn salt_is_32_bytes() {
+        let salt = generate_salt();
+        assert_eq!(salt.len(), 32);
+    }
+
+    #[test]
+    fn salts_differ() {
+        let s1 = generate_salt();
+        let s2 = generate_salt();
+        assert_ne!(s1, s2);
+    }
+
+    #[test]
+    fn commitment_deterministic() {
+        let salt = [0xabu8; 32];
+        let c1 = compute_commitment("42", 100, &salt);
+        let c2 = compute_commitment("42", 100, &salt);
+        assert_eq!(c1, c2);
+    }
+
+    #[test]
+    fn commitment_changes_with_salt() {
+        let s1 = [0x01u8; 32];
+        let s2 = [0x02u8; 32];
+        let c1 = compute_commitment("42", 100, &s1);
+        let c2 = compute_commitment("42", 100, &s2);
+        assert_ne!(c1, c2);
     }
 }
