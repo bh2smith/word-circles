@@ -28,5 +28,5 @@ signature = "event Resolved(bytes32 gameId, address[] winners, uint256[] amounts
 [[event]]
 name = "game_recorded"
 start = 0
-contract = "0x0000000000000000000000000000000000000000"
+contract = "0xa4CBF2234A0a41C0F91CE43dfbEc2041e0A8D6D0"
 signature = "event GameRecorded(address indexed player, uint32 indexed gameId, bool won, uint8 guesses)"
