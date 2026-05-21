@@ -1,0 +1,24 @@
+{
+  "name": "word-circles.public.dappnode.eth",
+  "version": "0.1.0",
+  "upstreamVersion": "0.1.0",
+  "shortDescription": "Word Circles game backend",
+  "description": "Rust/Axum backend for the Word Circles game. Handles daily game creation, guess evaluation, and persistence via SQLite.",
+  "type": "service",
+  "architectures": ["linux/amd64"],
+  "author": "bh2smith",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bh2smith/word-circles"
+  },
+  "exposable": [
+    {
+      "name": "Word Circles API",
+      "description": "Game backend API",
+      "serviceName": "api",
+      "port": 3001
+    }
+  ],
+  "categories": ["Developer tools"]
+}

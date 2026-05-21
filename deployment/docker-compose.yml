@@ -1,0 +1,15 @@
+version: "3.8"
+
+services:
+  api:
+    build:
+      context: api
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    volumes:
+      - data:/data
+    ports:
+      - "3001:3001"
+
+volumes:
+  data: {}
