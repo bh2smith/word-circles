@@ -86,13 +86,9 @@ contract WordCircleStats {
     /// @param won            Whether this player won
     /// @param amountWagered  Token amount the player staked
     /// @param amountEarned   Token amount the player received from settlement
-    function recordPvpResult(
-        bytes32 gameId,
-        address player,
-        bool won,
-        uint256 amountWagered,
-        uint256 amountEarned
-    ) external {
+    function recordPvpResult(bytes32 gameId, address player, bool won, uint256 amountWagered, uint256 amountEarned)
+        external
+    {
         if (msg.sender != resolver) revert Unauthorized();
         if (pvpRecorded[gameId][player]) revert AlreadyRecorded();
 
