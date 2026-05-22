@@ -55,6 +55,30 @@ pub fn generate_salt() -> [u8; 32] {
     salt
 }
 
+/// Computes keccak256 of all ANSWERS words concatenated (each exactly 5 ASCII bytes).
+/// Matches the Solidity: keccak256(abi.encodePacked(word1, word2, ...))
+/// Used as the wordListHash constructor argument for WordCommitment.
+pub fn word_list_hash() -> [u8; 32] {
+    let mut hasher = Keccak256::new();
+    for word in ANSWERS {
+        hasher.update(word.as_bytes());
+    }
+    hasher.finalize().into()
+}
+
+/// Computes the on-chain commitment hash for a PvP game.
+/// Matches the Solidity: keccak256(abi.encode(gameId, wordIndex, salt))
+/// where gameId is bytes32, wordIndex is uint256, salt is bytes32.
+pub fn compute_pvp_commitment(game_id: &[u8; 32], word_index: usize, salt: &[u8; 32]) -> [u8; 32] {
+    let mut hasher = Keccak256::new();
+    hasher.update(game_id);
+    let mut index_bytes = [0u8; 32];
+    index_bytes[24..].copy_from_slice(&(word_index as u64).to_be_bytes());
+    hasher.update(index_bytes);
+    hasher.update(salt);
+    hasher.finalize().into()
+}
+
 pub fn compute_commitment(game_id: u32, word_index: usize, salt: &[u8; 32]) -> [u8; 32] {
     let mut hasher = Keccak256::new();
     let mut game_id_padded = [0u8; 32];
@@ -103,6 +127,16 @@ pub fn evaluate_guess(guess: &str, answer: &str) -> [LetterResult; 5] {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn word_list_hash_stable() {
+        // Pin the hash so any accidental change to the ANSWERS list is caught.
+        // This value must match the wordListHash passed to the WordCommitment constructor.
+        assert_eq!(
+            hex::encode(word_list_hash()),
+            "ed01643704d9284f12c5b5fb16717cffa1a2cf4ed0cc01ac6274bc63df2b266a"
+        );
+    }
 
     #[test]
     fn game_id_deterministic() {

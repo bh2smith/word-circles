@@ -1,4 +1,6 @@
+use crate::db::models::GameRecord;
 use crate::db::repository::GameRepository;
+use crate::game;
 use rusqlite::Connection;
 use std::sync::Arc;
 use std::time::Duration;
@@ -47,9 +49,16 @@ pub async fn run<R: GameRepository>(repo: Arc<R>, config: IndexerConfig) {
                     block_number,
                     player,
                     players,
-                    ..
+                    capacity,
                 } => {
                     tracing::info!(game_id, block_number, player, players, "Joined");
+                    if players == capacity {
+                        let repo = Arc::clone(&repo);
+                        let game_id = game_id.clone();
+                        tokio::spawn(async move {
+                            prepare_pvp_game(repo, &game_id).await;
+                        });
+                    }
                 }
                 ArakEvent::Resolved {
                     game_id,
@@ -98,7 +107,8 @@ enum ArakEvent {
         game_id: String,
         block_number: u64,
         player: String,
-        players: String,
+        players: i64,
+        capacity: i64,
     },
     Resolved {
         game_id: String,
@@ -150,8 +160,10 @@ fn read_new_events(arak_db_path: &str, cursor: u64) -> Result<Vec<ArakEvent>, ru
     }
 
     if let Ok(mut stmt) = conn.prepare(
-        "SELECT block_number, gameId, player, players
-         FROM joined WHERE block_number > ?1 ORDER BY block_number, log_index",
+        "SELECT j.block_number, j.gameId, j.player, j.players, c.capacity
+         FROM joined j
+         LEFT JOIN created c ON c.gameId = j.gameId
+         WHERE j.block_number > ?1 ORDER BY j.block_number, j.log_index",
     ) {
         let rows = stmt.query_map([cursor], |row| {
             Ok(ArakEvent::Joined {
@@ -159,6 +171,7 @@ fn read_new_events(arak_db_path: &str, cursor: u64) -> Result<Vec<ArakEvent>, ru
                 game_id: row.get(1)?,
                 player: row.get(2)?,
                 players: row.get(3)?,
+                capacity: row.get::<_, Option<i64>>(4)?.unwrap_or(0),
             })
         })?;
         for row in rows {
@@ -201,4 +214,46 @@ fn read_new_events(arak_db_path: &str, cursor: u64) -> Result<Vec<ArakEvent>, ru
 
     events.sort_by_key(|e| e.block_number());
     Ok(events)
+}
+
+async fn prepare_pvp_game<R: GameRepository>(repo: Arc<R>, game_id: &str) {
+    let word_index = game::random_word_index();
+    let salt = game::generate_salt();
+
+    let game_id_bytes = {
+        let stripped = game_id.trim_start_matches("0x");
+        let mut buf = [0u8; 32];
+        if let Ok(decoded) = hex::decode(stripped) {
+            if decoded.len() == 32 {
+                buf.copy_from_slice(&decoded);
+            }
+        }
+        buf
+    };
+
+    let commitment = game::compute_pvp_commitment(&game_id_bytes, word_index, &salt);
+
+    let record = GameRecord {
+        id: game_id.to_string(),
+        game_type: "pvp".into(),
+        word_index,
+        salt: Some(hex::encode(salt)),
+        commitment: Some(hex::encode(commitment)),
+        status: "active".into(),
+        created_at: String::new(),
+    };
+
+    match repo.create_game(&record).await {
+        Ok(()) => {
+            tracing::info!(
+                game_id,
+                word_index,
+                commitment = hex::encode(commitment),
+                "PvP game prepared — TODO: submit commitment on-chain (#34)"
+            );
+        }
+        Err(e) => {
+            tracing::error!(game_id, "Failed to prepare PvP game: {e}");
+        }
+    }
 }
