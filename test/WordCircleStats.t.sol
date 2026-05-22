@@ -6,11 +6,20 @@ import "../contracts/WordCircleStats.sol";
 
 contract WordCircleStatsTest is Test {
     WordCircleStats public stats;
+
+    address resolver;
     address player = address(0xBEEF);
+    address player2 = address(0xCAFE);
+
+    bytes32 pvpGameId = keccak256("pvp-game-1");
+    uint256 wagerAmount = 10e18;
 
     function setUp() public {
-        stats = new WordCircleStats();
+        resolver = makeAddr("resolver");
+        stats = new WordCircleStats(resolver);
     }
+
+    // --- daily: recordGame ---
 
     function test_recordWin() public {
         vm.prank(player);
@@ -126,5 +135,98 @@ contract WordCircleStatsTest is Test {
         vm.expectEmit(true, true, false, true);
         emit WordCircleStats.GameRecorded(player, 1, true, 3);
         stats.recordGame(1, true, 3);
+    }
+
+    // --- pvp: recordPvpResult ---
+
+    function test_pvpRecordWin() public {
+        vm.prank(resolver);
+        stats.recordPvpResult(pvpGameId, player, true, wagerAmount, wagerAmount * 2);
+
+        (uint32 pvpWins, uint32 pvpLosses, uint256 totalWagered, uint256 totalEarned) = stats.getPvpStats(player);
+        assertEq(pvpWins, 1);
+        assertEq(pvpLosses, 0);
+        assertEq(totalWagered, wagerAmount);
+        assertEq(totalEarned, wagerAmount * 2);
+    }
+
+    function test_pvpRecordLoss() public {
+        vm.prank(resolver);
+        stats.recordPvpResult(pvpGameId, player, false, wagerAmount, 0);
+
+        (uint32 pvpWins, uint32 pvpLosses, uint256 totalWagered, uint256 totalEarned) = stats.getPvpStats(player);
+        assertEq(pvpWins, 0);
+        assertEq(pvpLosses, 1);
+        assertEq(totalWagered, wagerAmount);
+        assertEq(totalEarned, 0);
+    }
+
+    function test_pvpRecordBothPlayers() public {
+        vm.startPrank(resolver);
+        stats.recordPvpResult(pvpGameId, player, true, wagerAmount, wagerAmount * 2);
+        stats.recordPvpResult(pvpGameId, player2, false, wagerAmount, 0);
+        vm.stopPrank();
+
+        (uint32 w1,,,) = stats.getPvpStats(player);
+        (, uint32 l2,,) = stats.getPvpStats(player2);
+        assertEq(w1, 1);
+        assertEq(l2, 1);
+    }
+
+    function test_pvpAccumulatesAcrossGames() public {
+        bytes32 game2 = keccak256("pvp-game-2");
+
+        vm.startPrank(resolver);
+        stats.recordPvpResult(pvpGameId, player, true, wagerAmount, wagerAmount * 2);
+        stats.recordPvpResult(game2, player, false, wagerAmount, 0);
+        vm.stopPrank();
+
+        (uint32 pvpWins, uint32 pvpLosses, uint256 totalWagered, uint256 totalEarned) = stats.getPvpStats(player);
+        assertEq(pvpWins, 1);
+        assertEq(pvpLosses, 1);
+        assertEq(totalWagered, wagerAmount * 2);
+        assertEq(totalEarned, wagerAmount * 2);
+    }
+
+    function test_pvpEmitsEvent() public {
+        vm.prank(resolver);
+        vm.expectEmit(true, true, false, true);
+        emit WordCircleStats.PvpResultRecorded(pvpGameId, player, true, wagerAmount, wagerAmount * 2);
+        stats.recordPvpResult(pvpGameId, player, true, wagerAmount, wagerAmount * 2);
+    }
+
+    function test_pvpRevertsIfNotResolver() public {
+        vm.prank(player);
+        vm.expectRevert(WordCircleStats.Unauthorized.selector);
+        stats.recordPvpResult(pvpGameId, player, true, wagerAmount, wagerAmount * 2);
+    }
+
+    function test_pvpRevertsIfAlreadyRecorded() public {
+        vm.prank(resolver);
+        stats.recordPvpResult(pvpGameId, player, true, wagerAmount, wagerAmount * 2);
+
+        vm.prank(resolver);
+        vm.expectRevert(WordCircleStats.AlreadyRecorded.selector);
+        stats.recordPvpResult(pvpGameId, player, true, wagerAmount, wagerAmount * 2);
+    }
+
+    function test_pvpDoesNotAffectDailyStats() public {
+        vm.prank(resolver);
+        stats.recordPvpResult(pvpGameId, player, true, wagerAmount, wagerAmount * 2);
+
+        (uint32 gamesPlayed, uint32 gamesWon,,,,) = stats.getStats(player);
+        assertEq(gamesPlayed, 0);
+        assertEq(gamesWon, 0);
+    }
+
+    function test_dailyDoesNotAffectPvpStats() public {
+        vm.prank(player);
+        stats.recordGame(1, true, 3);
+
+        (uint32 pvpWins, uint32 pvpLosses, uint256 totalWagered, uint256 totalEarned) = stats.getPvpStats(player);
+        assertEq(pvpWins, 0);
+        assertEq(pvpLosses, 0);
+        assertEq(totalWagered, 0);
+        assertEq(totalEarned, 0);
     }
 }
