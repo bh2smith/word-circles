@@ -12,8 +12,8 @@ contract DeployScript is Script {
         string memory wordListUri = vm.envString("WORD_LIST_URI");
 
         vm.startBroadcast();
-        new WordCircleStats(resolver);
-        new WordCommitment(resolver, wordListHash, wordListUri);
+        new WordCircleStats(msg.sender, resolver);
+        new WordCommitment(msg.sender, resolver, wordListHash, wordListUri);
         vm.stopBroadcast();
     }
 }

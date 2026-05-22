@@ -7,6 +7,7 @@ import "../contracts/WordCircleStats.sol";
 contract WordCircleStatsTest is Test {
     WordCircleStats public stats;
 
+    address owner;
     address resolver;
     address player = address(0xBEEF);
     address player2 = address(0xCAFE);
@@ -15,8 +16,9 @@ contract WordCircleStatsTest is Test {
     uint256 wagerAmount = 10e18;
 
     function setUp() public {
+        owner = makeAddr("owner");
         resolver = makeAddr("resolver");
-        stats = new WordCircleStats(resolver);
+        stats = new WordCircleStats(owner, resolver);
     }
 
     // --- daily: recordGame ---
@@ -228,5 +230,43 @@ contract WordCircleStatsTest is Test {
         assertEq(pvpLosses, 0);
         assertEq(totalWagered, 0);
         assertEq(totalEarned, 0);
+    }
+
+    // --- ownership ---
+
+    function test_setResolver() public {
+        address newResolver = makeAddr("newResolver");
+        vm.prank(owner);
+        stats.setResolver(newResolver);
+        assertEq(stats.resolver(), newResolver);
+    }
+
+    function test_setResolverRevertsIfNotOwner() public {
+        vm.prank(player);
+        vm.expectRevert(WordCircleStats.Unauthorized.selector);
+        stats.setResolver(makeAddr("newResolver"));
+    }
+
+    function test_transferOwnership() public {
+        address newOwner = makeAddr("newOwner");
+        vm.prank(owner);
+        stats.transferOwnership(newOwner);
+        assertEq(stats.owner(), newOwner);
+    }
+
+    function test_lockResolver() public {
+        vm.prank(owner);
+        stats.transferOwnership(address(0));
+        assertEq(stats.owner(), address(0));
+
+        vm.prank(player);
+        vm.expectRevert(WordCircleStats.Unauthorized.selector);
+        stats.setResolver(makeAddr("newResolver"));
+    }
+
+    function test_transferOwnershipRevertsIfNotOwner() public {
+        vm.prank(player);
+        vm.expectRevert(WordCircleStats.Unauthorized.selector);
+        stats.transferOwnership(makeAddr("newOwner"));
     }
 }

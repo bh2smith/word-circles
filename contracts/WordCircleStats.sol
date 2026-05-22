@@ -20,7 +20,8 @@ contract WordCircleStats {
         uint256 totalEarned;
     }
 
-    address public immutable resolver;
+    address public owner;
+    address public resolver;
     mapping(address => PlayerStats) public stats;
     mapping(bytes32 => mapping(address => bool)) public pvpRecorded;
 
@@ -32,8 +33,19 @@ contract WordCircleStats {
     error AlreadyRecorded();
     error Unauthorized();
 
-    constructor(address _resolver) {
+    constructor(address _owner, address _resolver) {
+        owner = _owner;
         resolver = _resolver;
+    }
+
+    function setResolver(address _resolver) external {
+        if (msg.sender != owner) revert Unauthorized();
+        resolver = _resolver;
+    }
+
+    function transferOwnership(address _owner) external {
+        if (msg.sender != owner) revert Unauthorized();
+        owner = _owner;
     }
 
     /// @notice Record a completed daily game (self-reported by player)

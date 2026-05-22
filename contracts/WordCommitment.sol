@@ -24,7 +24,8 @@ contract WordCommitment {
         bool revealed;
     }
 
-    address public immutable resolver;
+    address public owner;
+    address public resolver;
     bytes32 public immutable wordListHash;
     string public wordListUri;
 
@@ -39,10 +40,21 @@ contract WordCommitment {
     error NotCommitted();
     error Unauthorized();
 
-    constructor(address _resolver, bytes32 _wordListHash, string memory _wordListUri) {
+    constructor(address _owner, address _resolver, bytes32 _wordListHash, string memory _wordListUri) {
+        owner = _owner;
         resolver = _resolver;
         wordListHash = _wordListHash;
         wordListUri = _wordListUri;
+    }
+
+    function setResolver(address _resolver) external {
+        if (msg.sender != owner) revert Unauthorized();
+        resolver = _resolver;
+    }
+
+    function transferOwnership(address _owner) external {
+        if (msg.sender != owner) revert Unauthorized();
+        owner = _owner;
     }
 
     function commit(bytes32 gameId, bytes32 commitmentHash) external {
