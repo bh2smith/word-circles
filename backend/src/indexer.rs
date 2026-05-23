@@ -57,8 +57,9 @@ pub async fn run<R: GameRepository>(repo: Arc<R>, config: IndexerConfig) {
                     if players == capacity {
                         let repo = Arc::clone(&repo);
                         let game_id = game_id.clone();
+                        let resolver = config.resolver.clone();
                         tokio::spawn(async move {
-                            prepare_pvp_game(repo, &game_id).await;
+                            prepare_pvp_game(repo, &game_id, resolver).await;
                         });
                     }
                 }
@@ -218,7 +219,11 @@ fn read_new_events(arak_db_path: &str, cursor: u64) -> Result<Vec<ArakEvent>, ru
     Ok(events)
 }
 
-async fn prepare_pvp_game<R: GameRepository>(repo: Arc<R>, game_id: &str) {
+async fn prepare_pvp_game<R: GameRepository>(
+    repo: Arc<R>,
+    game_id: &str,
+    resolver: Option<Arc<ResolverClient>>,
+) {
     let word_index = game::random_word_index();
     let salt = game::generate_salt();
 
@@ -251,11 +256,46 @@ async fn prepare_pvp_game<R: GameRepository>(repo: Arc<R>, game_id: &str) {
                 game_id,
                 word_index,
                 commitment = hex::encode(commitment),
-                "PvP game prepared — TODO: submit commitment on-chain (#34)"
+                "PvP game prepared"
             );
         }
         Err(e) => {
             tracing::error!(game_id, "Failed to prepare PvP game: {e}");
+            return;
+        }
+    }
+
+    let Some(resolver) = resolver else {
+        tracing::warn!(game_id, "No resolver configured — skipping on-chain commitment");
+        return;
+    };
+
+    submit_commitment_with_retry(&resolver, game_id, game_id_bytes, commitment).await;
+}
+
+async fn submit_commitment_with_retry(
+    resolver: &ResolverClient,
+    game_id: &str,
+    game_id_bytes: [u8; 32],
+    commitment: [u8; 32],
+) {
+    const MAX_RETRIES: u32 = 3;
+    const BASE_DELAY: Duration = Duration::from_secs(2);
+
+    for attempt in 0..=MAX_RETRIES {
+        match resolver.commit(game_id_bytes, commitment).await {
+            Ok(tx_hash) => {
+                tracing::info!(game_id, %tx_hash, "Commitment submitted on-chain");
+                return;
+            }
+            Err(e) => {
+                if attempt == MAX_RETRIES {
+                    tracing::error!(game_id, attempt, "Commitment failed after retries: {e}");
+                } else {
+                    tracing::warn!(game_id, attempt, "Commitment attempt failed: {e}, retrying…");
+                    tokio::time::sleep(BASE_DELAY * 2u32.pow(attempt)).await;
+                }
+            }
         }
     }
 }
