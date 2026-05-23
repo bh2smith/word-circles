@@ -7,7 +7,7 @@ use word_circles_backend::db::sqlite::SqliteRepository;
 
 fn app() -> axum::Router {
     let repo = SqliteRepository::new(":memory:").unwrap();
-    build_router(repo)
+    build_router(repo, None)
 }
 
 async fn json_body(resp: axum::response::Response) -> serde_json::Value {
@@ -268,6 +268,47 @@ async fn daily_leaderboard_empty() {
 
     let body = json_body(resp).await;
     assert!(body.as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn config_without_resolver() {
+    let resp = app()
+        .oneshot(
+            Request::get("/api/config")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
+}
+
+#[tokio::test]
+async fn config_with_resolver() {
+    use word_circles_backend::chain::ContractConfig;
+
+    let repo = SqliteRepository::new(":memory:").unwrap();
+    let config = ContractConfig {
+        resolver: "0x1234567890abcdef1234567890abcdef12345678".into(),
+        commitment_address: "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd".into(),
+        stats_address: None,
+    };
+    let app = build_router(repo, Some(config));
+
+    let resp = app
+        .oneshot(
+            Request::get("/api/config")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body = json_body(resp).await;
+    assert_eq!(body["resolver"], "0x1234567890abcdef1234567890abcdef12345678");
+    assert_eq!(body["commitmentAddress"], "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd");
+    assert!(body.get("statsAddress").is_none());
 }
 
 #[tokio::test]

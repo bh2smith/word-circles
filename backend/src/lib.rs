@@ -11,6 +11,7 @@ use axum::{
     response::IntoResponse,
     routing::{get, post},
 };
+use chain::ContractConfig;
 use db::{
     models::{GameRecord, GuessRecord},
     repository::{GameRepository, RepositoryError},
@@ -22,6 +23,7 @@ use tracing::error;
 
 struct AppState<R: GameRepository> {
     repo: R,
+    contract_config: Option<ContractConfig>,
 }
 
 #[derive(Serialize)]
@@ -277,10 +279,31 @@ async fn health() -> &'static str {
     "ok"
 }
 
-pub fn build_router<R: GameRepository>(repo: R) -> Router {
-    let state = Arc::new(AppState { repo });
+async fn get_config<R: GameRepository>(
+    State(state): State<Arc<AppState<R>>>,
+) -> impl IntoResponse {
+    match &state.contract_config {
+        Some(config) => (StatusCode::OK, Json(serde_json::to_value(config).unwrap())),
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(
+                serde_json::to_value(ErrorResponse {
+                    error: "Resolver not configured".into(),
+                })
+                .unwrap(),
+            ),
+        ),
+    }
+}
+
+pub fn build_router<R: GameRepository>(repo: R, contract_config: Option<ContractConfig>) -> Router {
+    let state = Arc::new(AppState {
+        repo,
+        contract_config,
+    });
     Router::new()
         .route("/health", get(health))
+        .route("/api/config", get(get_config::<R>))
         .route("/api/game", get(get_game::<R>))
         .route("/api/guess", post(post_guess::<R>))
         .route("/api/leaderboard", get(get_leaderboard::<R>))

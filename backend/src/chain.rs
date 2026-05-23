@@ -6,7 +6,17 @@ use alloy::{
     sol,
     sol_types::SolValue,
 };
+use serde::Serialize;
 use std::fmt;
+
+#[derive(Clone, Serialize)]
+pub struct ContractConfig {
+    pub resolver: String,
+    #[serde(rename = "commitmentAddress")]
+    pub commitment_address: String,
+    #[serde(rename = "statsAddress", skip_serializing_if = "Option::is_none")]
+    pub stats_address: Option<String>,
+}
 
 sol! {
     #[sol(rpc)]
@@ -82,6 +92,14 @@ impl ResolverClient {
 
     pub fn address(&self) -> Address {
         self.signer.address()
+    }
+
+    pub fn config(&self) -> ContractConfig {
+        ContractConfig {
+            resolver: self.signer.address().to_string(),
+            commitment_address: self.commitment_address.to_string(),
+            stats_address: self.stats_address.map(|a| a.to_string()),
+        }
     }
 
     pub async fn commit(

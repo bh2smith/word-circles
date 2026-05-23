@@ -51,7 +51,8 @@ async fn main() {
         tracing::info!("Event listener enabled (polling arak)");
     }
 
-    let app = build_router(repo);
+    let contract_config = resolver.as_ref().map(|r| r.config());
+    let app = build_router(repo, contract_config);
 
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
     println!("Backend listening on {addr}");
