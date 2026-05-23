@@ -288,6 +288,7 @@ async fn config_with_resolver() {
         resolver: "0x1234567890abcdef1234567890abcdef12345678".into(),
         commitment_address: "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd".into(),
         stats_address: None,
+        pvp_enabled: false,
     };
     let app = build_router(repo, Some(config));
 
@@ -307,6 +308,30 @@ async fn config_with_resolver() {
         "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd"
     );
     assert!(body.get("statsAddress").is_none());
+    assert_eq!(body["pvpEnabled"], false);
+}
+
+#[tokio::test]
+async fn config_with_pvp_enabled() {
+    use word_circles_backend::chain::ContractConfig;
+
+    let repo = SqliteRepository::new(":memory:").unwrap();
+    let config = ContractConfig {
+        resolver: "0x1234567890abcdef1234567890abcdef12345678".into(),
+        commitment_address: "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd".into(),
+        stats_address: None,
+        pvp_enabled: true,
+    };
+    let app = build_router(repo, Some(config));
+
+    let resp = app
+        .oneshot(Request::get("/api/config").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body = json_body(resp).await;
+    assert_eq!(body["pvpEnabled"], true);
 }
 
 #[tokio::test]

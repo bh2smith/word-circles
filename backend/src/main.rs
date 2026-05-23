@@ -14,6 +14,14 @@ async fn main() {
 
     let repo = SqliteRepository::new(&db_path).expect("Failed to initialize database");
 
+    let pvp_enabled = std::env::var("PVP_ENABLED")
+        .map(|v| v == "true" || v == "1")
+        .unwrap_or(false);
+
+    if pvp_enabled {
+        tracing::info!("PvP mode enabled");
+    }
+
     let resolver = match ResolverClient::from_env() {
         Ok(client) => {
             tracing::info!(
@@ -39,6 +47,7 @@ async fn main() {
             arak_db_path: arak_db,
             poll_interval: Duration::from_secs(poll_secs),
             resolver: resolver.clone(),
+            pvp_enabled,
         };
 
         let indexer_repo = Arc::new(
@@ -51,7 +60,7 @@ async fn main() {
         tracing::info!("Event listener enabled (polling arak)");
     }
 
-    let contract_config = resolver.as_ref().map(|r| r.config());
+    let contract_config = resolver.as_ref().map(|r| r.config(pvp_enabled));
     let app = build_router(repo, contract_config);
 
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();

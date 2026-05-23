@@ -16,6 +16,8 @@ pub struct ContractConfig {
     pub commitment_address: String,
     #[serde(rename = "statsAddress", skip_serializing_if = "Option::is_none")]
     pub stats_address: Option<String>,
+    #[serde(rename = "pvpEnabled")]
+    pub pvp_enabled: bool,
 }
 
 sol! {
@@ -94,11 +96,12 @@ impl ResolverClient {
         self.signer.address()
     }
 
-    pub fn config(&self) -> ContractConfig {
+    pub fn config(&self, pvp_enabled: bool) -> ContractConfig {
         ContractConfig {
             resolver: self.signer.address().to_string(),
             commitment_address: self.commitment_address.to_string(),
             stats_address: self.stats_address.map(|a| a.to_string()),
+            pvp_enabled,
         }
     }
 

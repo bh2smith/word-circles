@@ -12,6 +12,7 @@ services:
       RPC_URL: http://gnosis-erigon.dappnode:8545
       COMMITMENT_ADDRESS: "0x6e99c40bd8b87290EB977336c4Be8b2106baB08f"
       STATS_ADDRESS: "0xB96413584d7a4e07cc8c238cC4baA3474C956CCF"
+      PVP_ENABLED: "false"
     volumes:
       - data:/data
     ports:

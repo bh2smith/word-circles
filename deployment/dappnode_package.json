@@ -71,6 +71,18 @@
         "description": "Deployed WordCircleStats contract address on Gnosis",
         "required": false,
         "default": "0xB96413584d7a4e07cc8c238cC4baA3474C956CCF"
+      },
+      {
+        "id": "pvp_enabled",
+        "target": {
+          "type": "environment",
+          "name": "PVP_ENABLED",
+          "service": "api"
+        },
+        "title": "Enable PvP Mode",
+        "description": "Enable PvP matchmaking, escrow games, and related endpoints (requires resolver wallet)",
+        "required": false,
+        "default": "false"
       }
     ]
   }

@@ -10,6 +10,7 @@ pub struct IndexerConfig {
     pub arak_db_path: String,
     pub poll_interval: Duration,
     pub resolver: Option<Arc<ResolverClient>>,
+    pub pvp_enabled: bool,
 }
 
 /// Polls arak's event tables for new on-chain events and reacts to them.
@@ -54,7 +55,7 @@ pub async fn run<R: GameRepository>(repo: Arc<R>, config: IndexerConfig) {
                     capacity,
                 } => {
                     tracing::info!(game_id, block_number, player, players, "Joined");
-                    if players == capacity {
+                    if players == capacity && config.pvp_enabled {
                         let repo = Arc::clone(&repo);
                         let game_id = game_id.clone();
                         let resolver = config.resolver.clone();
