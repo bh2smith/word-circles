@@ -2,7 +2,7 @@ use alloy::{
     network::EthereumWallet,
     primitives::{Address, Bytes, FixedBytes, U256, keccak256},
     providers::ProviderBuilder,
-    signers::{local::PrivateKeySigner, Signer},
+    signers::{Signer, local::PrivateKeySigner},
     sol,
     sol_types::SolValue,
 };
@@ -67,8 +67,8 @@ impl ResolverClient {
     pub fn from_env() -> Result<Self, ChainError> {
         let key_hex = std::env::var("RESOLVER_PRIVATE_KEY")
             .map_err(|_| ChainError::Config("RESOLVER_PRIVATE_KEY not set".into()))?;
-        let rpc_url = std::env::var("RPC_URL")
-            .map_err(|_| ChainError::Config("RPC_URL not set".into()))?;
+        let rpc_url =
+            std::env::var("RPC_URL").map_err(|_| ChainError::Config("RPC_URL not set".into()))?;
         let commitment_hex = std::env::var("COMMITMENT_ADDRESS")
             .map_err(|_| ChainError::Config("COMMITMENT_ADDRESS not set".into()))?;
         let stats_address = std::env::var("STATS_ADDRESS")
@@ -171,9 +171,7 @@ impl ResolverClient {
         Ok(Bytes::from(sig.as_bytes().to_vec()))
     }
 
-    fn build_provider(
-        &self,
-    ) -> Result<impl alloy::providers::Provider, ChainError> {
+    fn build_provider(&self) -> Result<impl alloy::providers::Provider, ChainError> {
         let url: url::Url = self
             .rpc_url
             .parse()

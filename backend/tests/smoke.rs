@@ -273,11 +273,7 @@ async fn daily_leaderboard_empty() {
 #[tokio::test]
 async fn config_without_resolver() {
     let resp = app()
-        .oneshot(
-            Request::get("/api/config")
-                .body(Body::empty())
-                .unwrap(),
-        )
+        .oneshot(Request::get("/api/config").body(Body::empty()).unwrap())
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
@@ -296,18 +292,20 @@ async fn config_with_resolver() {
     let app = build_router(repo, Some(config));
 
     let resp = app
-        .oneshot(
-            Request::get("/api/config")
-                .body(Body::empty())
-                .unwrap(),
-        )
+        .oneshot(Request::get("/api/config").body(Body::empty()).unwrap())
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 
     let body = json_body(resp).await;
-    assert_eq!(body["resolver"], "0x1234567890abcdef1234567890abcdef12345678");
-    assert_eq!(body["commitmentAddress"], "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd");
+    assert_eq!(
+        body["resolver"],
+        "0x1234567890abcdef1234567890abcdef12345678"
+    );
+    assert_eq!(
+        body["commitmentAddress"],
+        "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd"
+    );
     assert!(body.get("statsAddress").is_none());
 }
 

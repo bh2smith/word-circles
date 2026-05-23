@@ -279,9 +279,7 @@ async fn health() -> &'static str {
     "ok"
 }
 
-async fn get_config<R: GameRepository>(
-    State(state): State<Arc<AppState<R>>>,
-) -> impl IntoResponse {
+async fn get_config<R: GameRepository>(State(state): State<Arc<AppState<R>>>) -> impl IntoResponse {
     match &state.contract_config {
         Some(config) => (StatusCode::OK, Json(serde_json::to_value(config).unwrap())),
         None => (
