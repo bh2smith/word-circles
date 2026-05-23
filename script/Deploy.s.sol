@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import "forge-std/Script.sol";
 import "../contracts/WordCircleStats.sol";
+import "../contracts/WordCirclesEscrow.sol";
 import "../contracts/WordCommitment.sol";
 
 // Word list (2,315 answers, one per line) pinned on IPFS:
@@ -12,14 +13,24 @@ import "../contracts/WordCommitment.sol";
 //   Verify: fetch file, strip newlines, keccak256 the concatenated bytes.
 
 contract DeployScript is Script {
+    bytes32 constant WORD_LIST_HASH = 0xed01643704d9284f12c5b5fb16717cffa1a2cf4ed0cc01ac6274bc63df2b266a;
+    string constant WORD_LIST_URI = "ipfs://QmWaw2pGNQJqQmyWTeoaAJcMygUdSj69Dxq8v422HjmPBa";
+
     function run() external {
         address resolver = vm.envAddress("RESOLVER_ADDRESS");
-        bytes32 wordListHash = vm.envBytes32("WORD_LIST_HASH");
-        string memory wordListUri = vm.envString("WORD_LIST_URI");
 
         vm.startBroadcast();
-        new WordCircleStats(msg.sender, resolver);
-        new WordCommitment(msg.sender, resolver, wordListHash, wordListUri);
+
+        WordCirclesEscrow escrow = new WordCirclesEscrow();
+        WordCircleStats stats = new WordCircleStats(msg.sender, resolver);
+        WordCommitment commitment = new WordCommitment(msg.sender, resolver, WORD_LIST_HASH, WORD_LIST_URI);
+
         vm.stopBroadcast();
+
+        console.log("Escrow:     ", address(escrow));
+        console.log("Stats:      ", address(stats));
+        console.log("Commitment: ", address(commitment));
+        console.log("Resolver:   ", resolver);
+        console.log("Owner:      ", msg.sender);
     }
 }
