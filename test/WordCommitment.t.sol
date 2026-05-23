@@ -12,7 +12,7 @@ contract WordCommitmentTest is Test {
     address stranger = address(0x999);
 
     bytes32 constant WORD_LIST_HASH = keccak256("placeholder-word-list-hash");
-    string constant WORD_LIST_URI = "https://github.com/bh2smith/word-circles/blob/main/backend/src/words.rs";
+    string constant WORD_LIST_URI = "ipfs://QmWaw2pGNQJqQmyWTeoaAJcMygUdSj69Dxq8v422HjmPBa";
 
     bytes32 gameId = keccak256("game-1");
     uint256 wordIndex = 42;
