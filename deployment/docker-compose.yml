@@ -10,8 +10,8 @@ services:
       ARAK_DB_PATH: /data/arak.db
       RESOLVER_PRIVATE_KEY:
       RPC_URL: http://gnosis-erigon.dappnode:8545
-      COMMITMENT_ADDRESS: "0x072f934b7949D2a71EBb420d1147ff9de5E03170"
-      STATS_ADDRESS: "0x5f0FD6BDFb9127bc569E94A2c21699301E64477C"
+      COMMITMENT_ADDRESS: "0x6e99c40bd8b87290EB977336c4Be8b2106baB08f"
+      STATS_ADDRESS: "0xB96413584d7a4e07cc8c238cC4baA3474C956CCF"
     volumes:
       - data:/data
     ports:

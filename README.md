@@ -13,9 +13,9 @@ A daily Wordle-style word game with on-chain commitments and PvP escrow on Gnosi
 
 | Contract          | Address                                      | Gnosisscan                                                                       |
 | ----------------- | -------------------------------------------- | -------------------------------------------------------------------------------- |
-| WordCirclesEscrow | `0x924c0d0D66007882FdDaeb0d2c6e5447de2f7C75` | [View](https://gnosisscan.io/address/0x924c0d0D66007882FdDaeb0d2c6e5447de2f7C75) |
-| WordCircleStats   | `0x5f0FD6BDFb9127bc569E94A2c21699301E64477C` | [View](https://gnosisscan.io/address/0x5f0FD6BDFb9127bc569E94A2c21699301E64477C) |
-| WordCommitment    | `0x072f934b7949D2a71EBb420d1147ff9de5E03170` | [View](https://gnosisscan.io/address/0x072f934b7949D2a71EBb420d1147ff9de5E03170) |
+| WordCirclesEscrow | `0x310bAdE38C51019093776bf1Ba51DA23583794c2` | [View](https://gnosisscan.io/address/0x310bAdE38C51019093776bf1Ba51DA23583794c2) |
+| WordCircleStats   | `0xB96413584d7a4e07cc8c238cC4baA3474C956CCF` | [View](https://gnosisscan.io/address/0xB96413584d7a4e07cc8c238cC4baA3474C956CCF) |
+| WordCommitment    | `0x6e99c40bd8b87290EB977336c4Be8b2106baB08f` | [View](https://gnosisscan.io/address/0x6e99c40bd8b87290EB977336c4Be8b2106baB08f) |
 
 **Roles:**
 
