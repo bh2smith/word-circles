@@ -101,6 +101,11 @@ contract WordCirclesEscrow is ReentrancyGuard {
             IERC20(game.token).safeTransfer(winners[i], amounts[i]);
         }
 
+        uint256 remainder = pot - totalPayout;
+        if (remainder > 0) {
+            IERC20(game.token).safeTransfer(game.resolver, remainder);
+        }
+
         emit Resolved(gameId, winners, amounts);
     }
 

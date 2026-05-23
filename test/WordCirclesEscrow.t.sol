@@ -223,6 +223,43 @@ contract WordCirclesEscrowTest is Test {
         escrow.resolve(gameId, winners, payouts, sig);
     }
 
+    function test_resolveWithRemainder() public {
+        bytes32 gameId = _join(player1);
+        _join(player2);
+
+        address[] memory winners = new address[](1);
+        winners[0] = player1;
+        uint256[] memory payouts = new uint256[](1);
+        payouts[0] = 15e18; // 15 of 20 pot — 5 remainder to resolver
+
+        bytes memory sig = _signResolve(gameId, winners, payouts);
+
+        uint256 resolverBefore = token.balanceOf(resolver);
+        escrow.resolve(gameId, winners, payouts, sig);
+
+        assertEq(token.balanceOf(player1), 100e18 - amount + 15e18);
+        assertEq(token.balanceOf(resolver), resolverBefore + 5e18);
+        assertEq(token.balanceOf(address(escrow)), 0);
+    }
+
+    function test_resolveFullPayoutNoRemainder() public {
+        bytes32 gameId = _join(player1);
+        _join(player2);
+
+        address[] memory winners = new address[](1);
+        winners[0] = player1;
+        uint256[] memory payouts = new uint256[](1);
+        payouts[0] = 20e18;
+
+        bytes memory sig = _signResolve(gameId, winners, payouts);
+
+        uint256 resolverBefore = token.balanceOf(resolver);
+        escrow.resolve(gameId, winners, payouts, sig);
+
+        assertEq(token.balanceOf(resolver), resolverBefore);
+        assertEq(token.balanceOf(address(escrow)), 0);
+    }
+
     function test_getPlayerCount() public {
         assertEq(escrow.getPlayerCount(resolver, address(token), amount, capacity), 0);
         _join(player1);
