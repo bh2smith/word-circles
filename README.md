@@ -1,66 +1,48 @@
-## Foundry
+# Word Circles
 
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
+A daily Wordle-style word game with on-chain commitments and PvP escrow on Gnosis chain.
 
-Foundry consists of:
+## Architecture
 
-- **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
-- **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
-- **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
-- **Chisel**: Fast, utilitarian, and verbose solidity REPL.
+- **Frontend** — Next.js app (Vercel)
+- **Backend** — Rust/Axum API with SQLite persistence
+- **Indexer** — [Arak](https://github.com/bh2smith/arak) sidecar polling Gnosis chain events
+- **Contracts** — Solidity (Foundry), deployed on Gnosis
 
-## Documentation
+## Contracts (Gnosis Chain)
 
-https://book.getfoundry.sh/
+| Contract | Address | Gnosisscan |
+|---|---|---|
+| WordCirclesEscrow | `0x924c0d0D66007882FdDaeb0d2c6e5447de2f7C75` | [View](https://gnosisscan.io/address/0x924c0d0D66007882FdDaeb0d2c6e5447de2f7C75) |
+| WordCircleStats | `0x5f0FD6BDFb9127bc569E94A2c21699301E64477C` | [View](https://gnosisscan.io/address/0x5f0FD6BDFb9127bc569E94A2c21699301E64477C) |
+| WordCommitment | `0x072f934b7949D2a71EBb420d1147ff9de5E03170` | [View](https://gnosisscan.io/address/0x072f934b7949D2a71EBb420d1147ff9de5E03170) |
 
-## Usage
+**Roles:**
+- Owner: `0xB00b4C1e371DEe4F6F32072641430656D3F7c064`
+- Resolver: `0x8ba11AdD9bB5B60028eff90A14f0AE20b429ce8F`
 
-### Build
+## Development
 
-```shell
-$ forge build
+```bash
+# Frontend
+npm install && npm run dev
+
+# Backend
+cd backend && cargo run
+
+# Contracts
+forge build && forge test
 ```
 
-### Test
+## Deployment
 
-```shell
-$ forge test
+```bash
+# Import wallets (one-time)
+cast wallet import deployer --interactive
+cast wallet import resolver --interactive
+
+# Deploy contracts to Gnosis
+make deploy
 ```
 
-### Format
-
-```shell
-$ forge fmt
-```
-
-### Gas Snapshots
-
-```shell
-$ forge snapshot
-```
-
-### Anvil
-
-```shell
-$ anvil
-```
-
-### Deploy
-
-```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
-```
-
-### Cast
-
-```shell
-$ cast <subcommand>
-```
-
-### Help
-
-```shell
-$ forge --help
-$ anvil --help
-$ cast --help
-```
+See `deployment/` for DAppNode packaging.

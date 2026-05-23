@@ -1,7 +1,7 @@
 import { encodeFunctionData } from "viem";
 
 export const STATS_CONTRACT =
-  "0xa4CBF2234A0a41C0F91CE43dfbEc2041e0A8D6D0" as const;
+  "0x5f0FD6BDFb9127bc569E94A2c21699301E64477C" as const;
 
 export const statsAbi = [
   {

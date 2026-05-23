@@ -57,7 +57,8 @@
         },
         "title": "WordCommitment Contract Address",
         "description": "Deployed WordCommitment contract address on Gnosis",
-        "required": true
+        "required": false,
+        "default": "0x072f934b7949D2a71EBb420d1147ff9de5E03170"
       },
       {
         "id": "stats_address",
@@ -68,7 +69,8 @@
         },
         "title": "WordCircleStats Contract Address",
         "description": "Deployed WordCircleStats contract address on Gnosis",
-        "required": false
+        "required": false,
+        "default": "0x5f0FD6BDFb9127bc569E94A2c21699301E64477C"
       }
     ]
   }
