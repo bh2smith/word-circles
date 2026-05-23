@@ -20,5 +20,56 @@
       "port": 3001
     }
   ],
-  "categories": ["Developer tools"]
+  "categories": ["Developer tools"],
+  "setupWizard": {
+    "version": "2",
+    "fields": [
+      {
+        "id": "resolver_pk",
+        "target": {
+          "type": "environment",
+          "name": "RESOLVER_PRIVATE_KEY",
+          "service": "api"
+        },
+        "title": "Resolver Private Key",
+        "description": "Hex-encoded private key for the resolver wallet (signs commitments and settlements on-chain)",
+        "secret": true,
+        "required": true
+      },
+      {
+        "id": "rpc_url",
+        "target": {
+          "type": "environment",
+          "name": "RPC_URL",
+          "service": "api"
+        },
+        "title": "Gnosis RPC URL",
+        "description": "RPC endpoint for Gnosis Chain",
+        "required": false,
+        "default": "http://gnosis-erigon.dappnode:8545"
+      },
+      {
+        "id": "commitment_address",
+        "target": {
+          "type": "environment",
+          "name": "COMMITMENT_ADDRESS",
+          "service": "api"
+        },
+        "title": "WordCommitment Contract Address",
+        "description": "Deployed WordCommitment contract address on Gnosis",
+        "required": true
+      },
+      {
+        "id": "stats_address",
+        "target": {
+          "type": "environment",
+          "name": "STATS_ADDRESS",
+          "service": "api"
+        },
+        "title": "WordCircleStats Contract Address",
+        "description": "Deployed WordCircleStats contract address on Gnosis",
+        "required": false
+      }
+    ]
+  }
 }
