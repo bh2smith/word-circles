@@ -266,7 +266,10 @@ async fn prepare_pvp_game<R: GameRepository>(
     }
 
     let Some(resolver) = resolver else {
-        tracing::warn!(game_id, "No resolver configured — skipping on-chain commitment");
+        tracing::warn!(
+            game_id,
+            "No resolver configured — skipping on-chain commitment"
+        );
         return;
     };
 
@@ -292,7 +295,11 @@ async fn submit_commitment_with_retry(
                 if attempt == MAX_RETRIES {
                     tracing::error!(game_id, attempt, "Commitment failed after retries: {e}");
                 } else {
-                    tracing::warn!(game_id, attempt, "Commitment attempt failed: {e}, retrying…");
+                    tracing::warn!(
+                        game_id,
+                        attempt,
+                        "Commitment attempt failed: {e}, retrying…"
+                    );
                     tokio::time::sleep(BASE_DELAY * 2u32.pow(attempt)).await;
                 }
             }
