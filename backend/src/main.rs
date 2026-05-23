@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 use word_circles_backend::build_router;
+use word_circles_backend::chain::ResolverClient;
 use word_circles_backend::db::sqlite::SqliteRepository;
 use word_circles_backend::indexer;
 
@@ -13,6 +14,21 @@ async fn main() {
 
     let repo = SqliteRepository::new(&db_path).expect("Failed to initialize database");
 
+    let resolver = match ResolverClient::from_env() {
+        Ok(client) => {
+            tracing::info!(
+                address = %client.address(),
+                commitment = %client.commitment_address,
+                "Resolver wallet loaded"
+            );
+            Some(Arc::new(client))
+        }
+        Err(e) => {
+            tracing::warn!("Resolver wallet not configured: {e}");
+            None
+        }
+    };
+
     if let Ok(arak_db) = std::env::var("ARAK_DB_PATH") {
         let poll_secs: u64 = std::env::var("INDEXER_POLL_SECS")
             .ok()
@@ -22,6 +38,7 @@ async fn main() {
         let config = indexer::IndexerConfig {
             arak_db_path: arak_db,
             poll_interval: Duration::from_secs(poll_secs),
+            resolver: resolver.clone(),
         };
 
         let indexer_repo = Arc::new(

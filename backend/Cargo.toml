@@ -13,8 +13,18 @@ rusqlite = { version = "0.33", features = ["bundled"] }
 rand = "0.9"
 sha3 = "0.10"
 hex = "0.4"
+url = "2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+alloy = { version = "1", features = [
+    "providers",
+    "provider-http",
+    "signers",
+    "signer-local",
+    "contract",
+    "sol-types",
+    "network",
+] }
 
 
 [dev-dependencies]

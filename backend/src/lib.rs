@@ -1,3 +1,4 @@
+pub mod chain;
 pub mod db;
 pub mod game;
 pub mod indexer;

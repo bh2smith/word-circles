@@ -1,3 +1,4 @@
+use crate::chain::ResolverClient;
 use crate::db::models::GameRecord;
 use crate::db::repository::GameRepository;
 use crate::game;
@@ -8,6 +9,7 @@ use std::time::Duration;
 pub struct IndexerConfig {
     pub arak_db_path: String,
     pub poll_interval: Duration,
+    pub resolver: Option<Arc<ResolverClient>>,
 }
 
 /// Polls arak's event tables for new on-chain events and reacts to them.
