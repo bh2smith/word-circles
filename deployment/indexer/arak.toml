@@ -1,4 +1,4 @@
-ethrpc = "https://rpc.gnosis.gateway.fm"
+ethrpc = "http://gnosis-erigon.dappnode:8545"
 
 [database.sqlite]
 connection = "file:arak.db"
@@ -9,24 +9,24 @@ poll-interval = 5
 
 [[event]]
 name = "created"
-start = 0
-contract = "0x0000000000000000000000000000000000000000"
+start = 46322128
+contract = "0x310bAdE38C51019093776bf1Ba51DA23583794c2"
 signature = "event Created(bytes32 gameId, address player, address resolver, address token, uint256 amount, uint128 capacity)"
 
 [[event]]
 name = "joined"
-start = 0
-contract = "0x0000000000000000000000000000000000000000"
+start = 46322128
+contract = "0x310bAdE38C51019093776bf1Ba51DA23583794c2"
 signature = "event Joined(bytes32 gameId, address creator, address player, uint128 players)"
 
 [[event]]
 name = "resolved"
-start = 0
-contract = "0x0000000000000000000000000000000000000000"
+start = 46322128
+contract = "0x310bAdE38C51019093776bf1Ba51DA23583794c2"
 signature = "event Resolved(bytes32 gameId, address[] winners, uint256[] amounts)"
 
 [[event]]
 name = "game_recorded"
-start = 0
-contract = "0xa4CBF2234A0a41C0F91CE43dfbEc2041e0A8D6D0"
+start = 46322128
+contract = "0xB96413584d7a4e07cc8c238cC4baA3474C956CCF"
 signature = "event GameRecorded(address indexed player, uint32 indexed gameId, bool won, uint8 guesses)"
