@@ -31,9 +31,9 @@ Migrations run automatically on startup. The server starts on `http://localhost:
 
 ### Environment variables
 
-| Variable       | Default | Description                          |
-| -------------- | ------- | ------------------------------------ |
-| `PORT`         | `3001`  | Server listen port                   |
+| Variable       | Default | Description                             |
+| -------------- | ------- | --------------------------------------- |
+| `PORT`         | `3001`  | Server listen port                      |
 | `DATABASE_URL` | —       | PostgreSQL connection string (required) |
 
 ## Run tests
