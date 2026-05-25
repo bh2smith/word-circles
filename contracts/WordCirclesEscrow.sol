@@ -7,8 +7,24 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 
+interface IERC20Lift {
+    function erc20Circles(uint8 circlesType, address avatar) external view returns (address);
+}
+
+interface ICirclesToken {
+    function avatar() external view returns (address);
+}
+
 contract WordCirclesEscrow is ReentrancyGuard {
     using SafeERC20 for IERC20;
+
+    uint8 private constant CIRCLES_TYPE_INFLATION = 1;
+
+    IERC20Lift public immutable erc20Lift;
+
+    constructor(address _erc20Lift) {
+        erc20Lift = IERC20Lift(_erc20Lift);
+    }
 
     struct Game {
         uint128 players;
@@ -33,6 +49,7 @@ contract WordCirclesEscrow is ReentrancyGuard {
     error InvalidPayouts();
     error InvalidResolver();
     error InvalidSignature();
+    error InvalidToken();
     error InvalidWinner();
     error NotStarted();
     error PlayerAlreadyJoined();
@@ -44,6 +61,9 @@ contract WordCirclesEscrow is ReentrancyGuard {
     {
         if (capacity < 2) revert InvalidCapacity();
         if (resolver == address(0)) revert InvalidResolver();
+
+        address avatar = ICirclesToken(token).avatar();
+        if (erc20Lift.erc20Circles(CIRCLES_TYPE_INFLATION, avatar) != token) revert InvalidToken();
 
         IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
 

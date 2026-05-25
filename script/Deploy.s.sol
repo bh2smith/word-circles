@@ -19,10 +19,11 @@ contract DeployScript is Script {
     function run() external {
         address owner = vm.envAddress("DEPLOYER_ADDRESS");
         address resolver = vm.envAddress("RESOLVER_ADDRESS");
+        address erc20Lift = vm.envOr("ERC20_LIFT", address(0xDA02CDB5279B3a1eF27Be3d91aE924495E6A5569));
 
         vm.startBroadcast(owner);
 
-        WordCirclesEscrow escrow = new WordCirclesEscrow();
+        WordCirclesEscrow escrow = new WordCirclesEscrow(erc20Lift);
         WordCircleStats stats = new WordCircleStats(owner, resolver);
         WordCommitment commitment = new WordCommitment(owner, resolver, WORD_LIST_HASH, WORD_LIST_URI);
 

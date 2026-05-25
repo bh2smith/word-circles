@@ -6,7 +6,10 @@ import "../contracts/WordCirclesEscrow.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 contract MockToken is ERC20 {
-    constructor() ERC20("Mock CRC", "CRC") {
+    address public avatar;
+
+    constructor(address _avatar) ERC20("Mock CRC", "CRC") {
+        avatar = _avatar;
         _mint(msg.sender, 1_000_000e18);
     }
 
@@ -15,20 +18,35 @@ contract MockToken is ERC20 {
     }
 }
 
+contract MockERC20Lift {
+    mapping(uint8 => mapping(address => address)) public erc20Circles;
+
+    function register(uint8 circlesType, address _avatar, address wrapper) external {
+        erc20Circles[circlesType][_avatar] = wrapper;
+    }
+}
+
 contract WordCirclesEscrowTest is Test {
     WordCirclesEscrow public escrow;
     MockToken public token;
+    MockERC20Lift public lift;
 
     uint256 resolverKey = 0xA11CE;
     address resolver = vm.addr(resolverKey);
     address player1 = address(0x1);
     address player2 = address(0x2);
+    address tokenAvatar = address(0xAA);
     uint256 amount = 10e18;
     uint128 capacity = 2;
 
     function setUp() public {
-        escrow = new WordCirclesEscrow();
-        token = new MockToken();
+        lift = new MockERC20Lift();
+        escrow = new WordCirclesEscrow(address(lift));
+        token = new MockToken(tokenAvatar);
+
+        // Register as inflationary (type 1) in the mock lift
+        lift.register(1, tokenAvatar, address(token));
+
         token.mint(player1, 100e18);
         token.mint(player2, 100e18);
 
@@ -104,6 +122,30 @@ contract WordCirclesEscrowTest is Test {
         vm.prank(player1);
         vm.expectRevert(WordCirclesEscrow.InvalidResolver.selector);
         escrow.join(address(0), address(token), amount, capacity);
+    }
+
+    function test_revertDemurrageToken() public {
+        MockToken demurrageToken = new MockToken(address(0xBB));
+        // Register as demurrage (type 0) — NOT inflationary
+        lift.register(0, address(0xBB), address(demurrageToken));
+        demurrageToken.mint(player1, 100e18);
+        vm.prank(player1);
+        demurrageToken.approve(address(escrow), type(uint256).max);
+
+        vm.prank(player1);
+        vm.expectRevert(WordCirclesEscrow.InvalidToken.selector);
+        escrow.join(resolver, address(demurrageToken), amount, capacity);
+    }
+
+    function test_revertUnregisteredToken() public {
+        MockToken fakeToken = new MockToken(address(0xCC));
+        fakeToken.mint(player1, 100e18);
+        vm.prank(player1);
+        fakeToken.approve(address(escrow), type(uint256).max);
+
+        vm.prank(player1);
+        vm.expectRevert(WordCirclesEscrow.InvalidToken.selector);
+        escrow.join(resolver, address(fakeToken), amount, capacity);
     }
 
     function test_resolveWinner() public {
