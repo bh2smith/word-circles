@@ -34,6 +34,10 @@ impl PostgresRepository {
 
         Ok(Self { pool })
     }
+
+    pub fn from_pool(pool: PgPool) -> Self {
+        Self { pool }
+    }
 }
 
 impl GameRepository for PostgresRepository {
@@ -430,4 +434,192 @@ fn is_unique_violation(e: &sqlx::Error) -> bool {
         return db_err.code().as_deref() == Some("23505");
     }
     false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use super::super::models::*;
+    use super::super::repository::*;
+    use sqlx::PgPool;
+
+    fn daily_game(id: &str, word_index: usize) -> GameRecord {
+        GameRecord {
+            id: id.into(),
+            game_type: "daily".into(),
+            word_index,
+            salt: None,
+            commitment: None,
+            status: "active".into(),
+            created_at: String::new(),
+            capacity: None,
+            token: None,
+            amount: None,
+            timeout_secs: None,
+        }
+    }
+
+    fn pvp_game(id: &str) -> GameRecord {
+        GameRecord {
+            id: id.into(),
+            game_type: "pvp".into(),
+            word_index: 0,
+            salt: None,
+            commitment: None,
+            status: "waiting".into(),
+            created_at: String::new(),
+            capacity: Some(2),
+            token: Some("0xtoken".into()),
+            amount: Some("10000000000000000000".into()),
+            timeout_secs: Some(10800),
+        }
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn create_and_get_game(pool: PgPool) {
+        let repo = PostgresRepository::from_pool(pool);
+        let game = daily_game("42", 100);
+        repo.create_game(&game).await.unwrap();
+
+        let fetched = repo.get_game("42").await.unwrap().unwrap();
+        assert_eq!(fetched.id, "42");
+        assert_eq!(fetched.word_index, 100);
+        assert_eq!(fetched.status, "active");
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn duplicate_game_returns_conflict(pool: PgPool) {
+        let repo = PostgresRepository::from_pool(pool);
+        let game = daily_game("1", 0);
+        repo.create_game(&game).await.unwrap();
+        let err = repo.create_game(&game).await.unwrap_err();
+        assert!(matches!(err, RepositoryError::Conflict(_)));
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn get_or_create_player(pool: PgPool) {
+        let repo = PostgresRepository::from_pool(pool);
+        let p1 = repo.get_or_create_player("0xabc").await.unwrap();
+        let p2 = repo.get_or_create_player("0xabc").await.unwrap();
+        assert_eq!(p1.id, p2.id);
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn record_and_retrieve_guesses(pool: PgPool) {
+        let repo = PostgresRepository::from_pool(pool);
+        let game = daily_game("10", 50);
+        repo.create_game(&game).await.unwrap();
+        let player = repo.get_or_create_player("0xdef").await.unwrap();
+
+        let guess = GuessRecord {
+            id: None,
+            game_id: "10".into(),
+            player_id: player.id,
+            guess_number: 0,
+            word: "crane".into(),
+            results: r#"["correct","absent","present","absent","absent"]"#.into(),
+            is_correct: false,
+            created_at: None,
+        };
+        repo.record_guess(&guess).await.unwrap();
+
+        let count = repo.get_guess_count("10", player.id).await.unwrap();
+        assert_eq!(count, 1);
+
+        let guesses = repo.get_guesses("10", player.id).await.unwrap();
+        assert_eq!(guesses.len(), 1);
+        assert_eq!(guesses[0].word, "crane");
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn update_game_status(pool: PgPool) {
+        let repo = PostgresRepository::from_pool(pool);
+        let game = daily_game("5", 25);
+        repo.create_game(&game).await.unwrap();
+        repo.update_game_status("5", "completed").await.unwrap();
+
+        let fetched = repo.get_game("5").await.unwrap().unwrap();
+        assert_eq!(fetched.status, "completed");
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn pvp_game_with_players(pool: PgPool) {
+        let repo = PostgresRepository::from_pool(pool);
+        let game = pvp_game("0xgame1");
+        repo.create_game(&game).await.unwrap();
+
+        let p1 = repo.get_or_create_player("0xplayer1").await.unwrap();
+        let p2 = repo.get_or_create_player("0xplayer2").await.unwrap();
+
+        repo.add_game_player("0xgame1", p1.id, "0xplayer1")
+            .await
+            .unwrap();
+        repo.add_game_player("0xgame1", p2.id, "0xplayer2")
+            .await
+            .unwrap();
+
+        let players = repo.get_game_players("0xgame1").await.unwrap();
+        assert_eq!(players.len(), 2);
+        assert!(players[0].started_at.is_none());
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn pvp_player_lifecycle(pool: PgPool) {
+        let repo = PostgresRepository::from_pool(pool);
+        let game = pvp_game("0xgame2");
+        repo.create_game(&game).await.unwrap();
+
+        let p = repo.get_or_create_player("0xplayer1").await.unwrap();
+        repo.add_game_player("0xgame2", p.id, "0xplayer1")
+            .await
+            .unwrap();
+
+        repo.update_game_player_started("0xgame2", p.id)
+            .await
+            .unwrap();
+        let players = repo.get_game_players("0xgame2").await.unwrap();
+        assert!(players[0].started_at.is_some());
+
+        repo.update_game_player_finished("0xgame2", p.id, true, 4)
+            .await
+            .unwrap();
+        let players = repo.get_game_players("0xgame2").await.unwrap();
+        assert!(players[0].finished_at.is_some());
+        assert!(players[0].solved);
+        assert_eq!(players[0].guess_count, 4);
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn update_game_pvp_fields(pool: PgPool) {
+        let repo = PostgresRepository::from_pool(pool);
+        let game = pvp_game("0xgame3");
+        repo.create_game(&game).await.unwrap();
+
+        repo.update_game_pvp_fields("0xgame3", 42, "aabb", "ccdd", "active")
+            .await
+            .unwrap();
+        let fetched = repo.get_game("0xgame3").await.unwrap().unwrap();
+        assert_eq!(fetched.word_index, 42);
+        assert_eq!(fetched.salt.as_deref(), Some("aabb"));
+        assert_eq!(fetched.commitment.as_deref(), Some("ccdd"));
+        assert_eq!(fetched.status, "active");
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn add_game_player_idempotent(pool: PgPool) {
+        let repo = PostgresRepository::from_pool(pool);
+        let game = pvp_game("0xgame4");
+        repo.create_game(&game).await.unwrap();
+        let p = repo.get_or_create_player("0xplayer1").await.unwrap();
+
+        repo.add_game_player("0xgame4", p.id, "0xplayer1")
+            .await
+            .unwrap();
+        repo.add_game_player("0xgame4", p.id, "0xplayer1")
+            .await
+            .unwrap();
+
+        let players = repo.get_game_players("0xgame4").await.unwrap();
+        assert_eq!(players.len(), 1);
+    }
 }
