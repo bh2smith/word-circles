@@ -254,7 +254,7 @@ fn read_new_events(arak_db_path: &str, cursor: u64) -> Result<Vec<ArakEvent>, ru
     Ok(events)
 }
 
-async fn backfill_game_result<R: GameRepository>(
+pub async fn backfill_game_result<R: GameRepository>(
     repo: &R,
     game_id: u32,
     player: &str,

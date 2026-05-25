@@ -19,6 +19,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 utoipa = { version = "5", features = ["axum_extras"] }
 utoipa-swagger-ui = { version = "9", features = ["axum"] }
+reqwest = { version = "0.12", features = ["json"] }
 alloy = { version = "1", features = [
     "providers",
     "provider-http",

@@ -3,7 +3,9 @@ use std::time::Duration;
 use tracing_subscriber::EnvFilter;
 use word_circles_backend::build_router;
 use word_circles_backend::chain::ResolverClient;
+use word_circles_backend::db::repository::GameRepository;
 use word_circles_backend::db::sqlite::SqliteRepository;
+use word_circles_backend::dune;
 use word_circles_backend::indexer;
 use word_circles_backend::settlement;
 
@@ -14,6 +16,13 @@ async fn main() {
             EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
         )
         .init();
+
+    let args: Vec<String> = std::env::args().collect();
+    if args.get(1).map(|s| s.as_str()) == Some("bootstrap") {
+        run_bootstrap().await;
+        return;
+    }
+
     let port = std::env::var("PORT").unwrap_or_else(|_| "3001".into());
     let db_path = std::env::var("DATABASE_PATH").unwrap_or_else(|_| "word-circles.db".into());
     let addr = format!("0.0.0.0:{port}");
@@ -104,4 +113,48 @@ async fn main() {
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
     println!("Backend listening on {addr}");
     axum::serve(listener, app).await.unwrap();
+}
+
+async fn run_bootstrap() {
+    let api_key = std::env::var("DUNE_API_KEY").expect("DUNE_API_KEY env var is required");
+    let query_id = std::env::var("DUNE_QUERY_ID").expect("DUNE_QUERY_ID env var is required");
+    let db_path = std::env::var("DATABASE_PATH").unwrap_or_else(|_| "word-circles.db".into());
+
+    println!("Bootstrap: fetching GameRecorded events from Dune (query {query_id})...");
+
+    let events = dune::fetch_game_recorded_events(&api_key, &query_id)
+        .await
+        .expect("Failed to fetch events from Dune");
+
+    println!("Bootstrap: fetched {} records from Dune", events.len());
+
+    let repo = SqliteRepository::new(&db_path).expect("Failed to initialize database");
+
+    let mut backfilled = 0u64;
+    let mut max_block: u64 = 0;
+
+    for event in &events {
+        indexer::backfill_game_result(&repo, event.game_id, &event.player, event.won, event.guesses)
+            .await;
+        backfilled += 1;
+        if event.block_number > max_block {
+            max_block = event.block_number;
+        }
+    }
+
+    if max_block > 0 {
+        let current_cursor = repo.get_indexer_cursor().await.unwrap_or(0);
+        if max_block > current_cursor {
+            repo.set_indexer_cursor(max_block)
+                .await
+                .expect("Failed to set indexer cursor");
+            println!("Bootstrap: indexer cursor set to block {max_block}");
+        } else {
+            println!(
+                "Bootstrap: cursor already at {current_cursor} (>= {max_block}), not updating"
+            );
+        }
+    }
+
+    println!("Bootstrap complete: {backfilled} records backfilled, cursor at {max_block}");
 }
