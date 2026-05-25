@@ -13,26 +13,28 @@ use axum::{
 };
 use chain::ContractConfig;
 use db::{
-    models::{GameRecord, GuessRecord},
+    models::{DailyResult, GameRecord, GuessRecord, LeaderboardEntry},
     repository::{GameRepository, RepositoryError},
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tower_http::cors::CorsLayer;
-use tracing::error;
+use tracing::{debug, error};
+use utoipa::{IntoParams, OpenApi, ToSchema};
+use utoipa_swagger_ui::SwaggerUi;
 
 struct AppState<R: GameRepository> {
     repo: R,
     contract_config: Option<ContractConfig>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 struct GameResponse {
     #[serde(rename = "gameId")]
     game_id: u32,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 struct GuessRequest {
     guess: String,
     #[serde(rename = "gameId")]
@@ -43,7 +45,7 @@ struct GuessRequest {
     player: Option<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 struct GuessResponse {
     guess: String,
     results: Vec<game::LetterResult>,
@@ -54,14 +56,23 @@ struct GuessResponse {
     answer: Option<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 struct ErrorResponse {
     error: String,
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/game",
+    responses(
+        (status = 200, description = "Current daily game", body = GameResponse),
+        (status = 500, description = "Internal error", body = ErrorResponse),
+    )
+)]
 async fn get_game<R: GameRepository>(State(state): State<Arc<AppState<R>>>) -> impl IntoResponse {
     let game_id = game::get_game_id();
     let game_id_str = game_id.to_string();
+    debug!(game_id, "GET /api/game");
 
     match state.repo.get_game(&game_id_str).await {
         Ok(Some(_)) => {}
@@ -115,11 +126,28 @@ async fn get_game<R: GameRepository>(State(state): State<Arc<AppState<R>>>) -> i
     )
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/guess",
+    request_body = GuessRequest,
+    responses(
+        (status = 200, description = "Guess evaluation result", body = GuessResponse),
+        (status = 400, description = "Invalid guess", body = ErrorResponse),
+        (status = 500, description = "Internal error", body = ErrorResponse),
+    )
+)]
 async fn post_guess<R: GameRepository>(
     State(state): State<Arc<AppState<R>>>,
     Json(req): Json<GuessRequest>,
 ) -> impl IntoResponse {
     let normalized = req.guess.to_lowercase();
+    debug!(
+        guess = %normalized,
+        game_id = req.game_id,
+        guess_number = req.guess_number,
+        player = ?req.player,
+        "POST /api/guess"
+    );
 
     if normalized.len() != game::WORD_LENGTH || !normalized.bytes().all(|b| b.is_ascii_lowercase())
     {
@@ -214,7 +242,7 @@ async fn post_guess<R: GameRepository>(
     )
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, IntoParams)]
 struct LeaderboardQuery {
     #[serde(default = "default_limit")]
     limit: u32,
@@ -226,16 +254,26 @@ fn default_limit() -> u32 {
     20
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, IntoParams)]
 struct DailyQuery {
     #[serde(rename = "gameId")]
     game_id: u32,
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/leaderboard",
+    params(LeaderboardQuery),
+    responses(
+        (status = 200, description = "Leaderboard entries", body = Vec<LeaderboardEntry>),
+        (status = 500, description = "Internal error", body = ErrorResponse),
+    )
+)]
 async fn get_leaderboard<R: GameRepository>(
     State(state): State<Arc<AppState<R>>>,
     Query(query): Query<LeaderboardQuery>,
 ) -> impl IntoResponse {
+    debug!(limit = query.limit, offset = query.offset, "GET /api/leaderboard");
     match state.repo.get_leaderboard(query.limit, query.offset).await {
         Ok(entries) => (StatusCode::OK, Json(serde_json::to_value(entries).unwrap())),
         Err(e) => {
@@ -253,11 +291,21 @@ async fn get_leaderboard<R: GameRepository>(
     }
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/leaderboard/daily",
+    params(DailyQuery),
+    responses(
+        (status = 200, description = "Daily game results", body = Vec<DailyResult>),
+        (status = 500, description = "Internal error", body = ErrorResponse),
+    )
+)]
 async fn get_daily_leaderboard<R: GameRepository>(
     State(state): State<Arc<AppState<R>>>,
     Query(query): Query<DailyQuery>,
 ) -> impl IntoResponse {
     let game_id = query.game_id.to_string();
+    debug!(%game_id, "GET /api/leaderboard/daily");
     match state.repo.get_daily_results(&game_id).await {
         Ok(results) => (StatusCode::OK, Json(serde_json::to_value(results).unwrap())),
         Err(e) => {
@@ -275,11 +323,27 @@ async fn get_daily_leaderboard<R: GameRepository>(
     }
 }
 
+#[utoipa::path(
+    get,
+    path = "/health",
+    responses(
+        (status = 200, description = "Health check", body = String),
+    )
+)]
 async fn health() -> &'static str {
     "ok"
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/config",
+    responses(
+        (status = 200, description = "Contract configuration", body = ContractConfig),
+        (status = 503, description = "Resolver not configured", body = ErrorResponse),
+    )
+)]
 async fn get_config<R: GameRepository>(State(state): State<Arc<AppState<R>>>) -> impl IntoResponse {
+    debug!("GET /api/config");
     match &state.contract_config {
         Some(config) => (StatusCode::OK, Json(serde_json::to_value(config).unwrap())),
         None => (
@@ -294,6 +358,21 @@ async fn get_config<R: GameRepository>(State(state): State<Arc<AppState<R>>>) ->
     }
 }
 
+#[derive(OpenApi)]
+#[openapi(
+    info(
+        title = "Word Circles API",
+        description = "Backend API for the Word Circles daily word game",
+    ),
+    paths(health, get_config, get_game, post_guess, get_leaderboard, get_daily_leaderboard),
+    components(schemas(
+        GameResponse, GuessRequest, GuessResponse, ErrorResponse,
+        game::LetterResult, ContractConfig,
+        LeaderboardEntry, DailyResult,
+    ))
+)]
+struct ApiDoc;
+
 pub fn build_router<R: GameRepository>(repo: R, contract_config: Option<ContractConfig>) -> Router {
     let state = Arc::new(AppState {
         repo,
@@ -306,6 +385,7 @@ pub fn build_router<R: GameRepository>(repo: R, contract_config: Option<Contract
         .route("/api/guess", post(post_guess::<R>))
         .route("/api/leaderboard", get(get_leaderboard::<R>))
         .route("/api/leaderboard/daily", get(get_daily_leaderboard::<R>))
-        .layer(CorsLayer::permissive())
         .with_state(state)
+        .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
+        .layer(CorsLayer::permissive())
 }

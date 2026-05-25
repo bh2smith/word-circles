@@ -1,6 +1,7 @@
 use serde::Serialize;
+use utoipa::ToSchema;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct GameRecord {
     pub id: String,
     pub game_type: String,
@@ -11,14 +12,14 @@ pub struct GameRecord {
     pub created_at: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct PlayerRecord {
     pub id: i64,
     pub address: String,
     pub created_at: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct LeaderboardEntry {
     pub address: String,
     pub wins: u32,
@@ -26,14 +27,14 @@ pub struct LeaderboardEntry {
     pub avg_guesses: f64,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct DailyResult {
     pub address: String,
     pub guesses: u32,
     pub solved: bool,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct GuessRecord {
     pub id: Option<i64>,
     pub game_id: String,

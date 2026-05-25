@@ -9,7 +9,7 @@ use alloy::{
 use serde::Serialize;
 use std::fmt;
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, utoipa::ToSchema)]
 pub struct ContractConfig {
     pub resolver: String,
     #[serde(rename = "commitmentAddress")]

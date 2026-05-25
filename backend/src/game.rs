@@ -10,7 +10,7 @@ pub const MAX_GUESSES: usize = 6;
 const EPOCH_SECS: i64 = 1_735_689_600;
 const SECS_PER_DAY: i64 = 86_400;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum LetterResult {
     Correct,

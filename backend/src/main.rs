@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use std::time::Duration;
+use tracing_subscriber::EnvFilter;
 use word_circles_backend::build_router;
 use word_circles_backend::chain::ResolverClient;
 use word_circles_backend::db::sqlite::SqliteRepository;
@@ -7,7 +8,11 @@ use word_circles_backend::indexer;
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt::init();
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+        )
+        .init();
     let port = std::env::var("PORT").unwrap_or_else(|_| "3001".into());
     let db_path = std::env::var("DATABASE_PATH").unwrap_or_else(|_| "word-circles.db".into());
     let addr = format!("0.0.0.0:{port}");
