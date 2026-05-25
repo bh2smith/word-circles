@@ -116,13 +116,15 @@ async fn main() {
 }
 
 async fn run_bootstrap() {
-    let api_key = std::env::var("DUNE_API_KEY").expect("DUNE_API_KEY env var is required");
-    let query_id = std::env::var("DUNE_QUERY_ID").expect("DUNE_QUERY_ID env var is required");
+    let query_id: u32 = std::env::var("DUNE_QUERY_ID")
+        .expect("DUNE_QUERY_ID env var is required")
+        .parse()
+        .expect("DUNE_QUERY_ID must be a number");
     let db_path = std::env::var("DATABASE_PATH").unwrap_or_else(|_| "word-circles.db".into());
 
     println!("Bootstrap: fetching GameRecorded events from Dune (query {query_id})...");
 
-    let events = dune::fetch_game_recorded_events(&api_key, &query_id)
+    let events = dune::fetch_game_recorded_events(query_id)
         .await
         .expect("Failed to fetch events from Dune");
 
