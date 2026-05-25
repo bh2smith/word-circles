@@ -136,8 +136,14 @@ async fn run_bootstrap() {
     let mut max_block: u64 = 0;
 
     for event in &events {
-        indexer::backfill_game_result(&repo, event.game_id, &event.player, event.won, event.guesses)
-            .await;
+        indexer::backfill_game_result(
+            &repo,
+            event.game_id,
+            &event.player,
+            event.won,
+            event.guesses,
+        )
+        .await;
         backfilled += 1;
         if event.block_number > max_block {
             max_block = event.block_number;

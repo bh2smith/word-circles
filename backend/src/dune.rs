@@ -11,9 +11,7 @@ pub struct GameRecorded {
     pub block_number: u64,
 }
 
-pub async fn fetch_game_recorded_events(
-    query_id: u32,
-) -> Result<Vec<GameRecorded>, String> {
+pub async fn fetch_game_recorded_events(query_id: u32) -> Result<Vec<GameRecorded>, String> {
     let client = DuneClient::from_env();
     let response = client
         .refresh::<GameRecorded>(query_id, None, None)
