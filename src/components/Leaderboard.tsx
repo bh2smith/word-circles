@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { CirclesProfile, fetchCirclesProfiles } from "@/lib/circles";
 
 interface LeaderboardEntry {
   address: string;
@@ -37,25 +38,44 @@ export default function Leaderboard({
   const [overall, setOverall] = useState<LeaderboardEntry[]>([]);
   const [daily, setDaily] = useState<DailyResult[]>([]);
   const [loading, setLoading] = useState(false);
+  const [profiles, setProfiles] = useState<Map<string, CirclesProfile>>(
+    new Map(),
+  );
+
+  const loadProfiles = useCallback(async (addresses: string[]) => {
+    if (addresses.length === 0) return;
+    const map = await fetchCirclesProfiles(addresses);
+    setProfiles((prev) => {
+      const merged = new Map(prev);
+      map.forEach((v, k) => merged.set(k, v));
+      return merged;
+    });
+  }, []);
 
   const fetchOverall = useCallback(() => {
     setLoading(true);
     fetch("/api/leaderboard?limit=50")
       .then((r) => r.json())
-      .then(setOverall)
+      .then((entries: LeaderboardEntry[]) => {
+        setOverall(entries);
+        loadProfiles(entries.map((e) => e.address));
+      })
       .catch(() => setOverall([]))
       .finally(() => setLoading(false));
-  }, []);
+  }, [loadProfiles]);
 
   const fetchDaily = useCallback(() => {
     if (gameId === null) return;
     setLoading(true);
     fetch(`/api/leaderboard/daily?gameId=${gameId}`)
       .then((r) => r.json())
-      .then(setDaily)
+      .then((results: DailyResult[]) => {
+        setDaily(results);
+        loadProfiles(results.map((r) => r.address));
+      })
       .catch(() => setDaily([]))
       .finally(() => setLoading(false));
-  }, [gameId]);
+  }, [gameId, loadProfiles]);
 
   useEffect(() => {
     if (!open) return;
@@ -105,9 +125,9 @@ export default function Leaderboard({
           {loading ? (
             <p className="text-center text-neutral-400 py-8">Loading...</p>
           ) : tab === "daily" ? (
-            <DailyTable results={daily} />
+            <DailyTable results={daily} profiles={profiles} />
           ) : (
-            <OverallTable entries={overall} />
+            <OverallTable entries={overall} profiles={profiles} />
           )}
         </div>
 
@@ -122,7 +142,41 @@ export default function Leaderboard({
   );
 }
 
-function OverallTable({ entries }: { entries: LeaderboardEntry[] }) {
+function PlayerCell({
+  address,
+  profiles,
+}: {
+  address: string;
+  profiles: Map<string, CirclesProfile>;
+}) {
+  const profile = profiles.get(address.toLowerCase());
+  return (
+    <td className="py-1.5">
+      <div className="flex items-center gap-2 min-w-0">
+        {profile?.previewImageUrl ? (
+          <img
+            src={profile.previewImageUrl}
+            alt=""
+            className="w-5 h-5 rounded-full shrink-0"
+          />
+        ) : (
+          <div className="w-5 h-5 rounded-full bg-neutral-600 shrink-0" />
+        )}
+        <span className="truncate text-sm">
+          {profile?.name ?? truncateAddress(address)}
+        </span>
+      </div>
+    </td>
+  );
+}
+
+function OverallTable({
+  entries,
+  profiles,
+}: {
+  entries: LeaderboardEntry[];
+  profiles: Map<string, CirclesProfile>;
+}) {
   if (entries.length === 0) {
     return (
       <p className="text-center text-neutral-400 py-8">No games played yet.</p>
@@ -143,9 +197,7 @@ function OverallTable({ entries }: { entries: LeaderboardEntry[] }) {
         {entries.map((entry, i) => (
           <tr key={entry.address} className="border-t border-neutral-700">
             <td className="py-1.5 text-neutral-400">{i + 1}</td>
-            <td className="py-1.5 font-mono">
-              {truncateAddress(entry.address)}
-            </td>
+            <PlayerCell address={entry.address} profiles={profiles} />
             <td className="py-1.5 text-right">{entry.wins}</td>
             <td className="py-1.5 text-right">{entry.games_played}</td>
             <td className="py-1.5 text-right">
@@ -158,7 +210,13 @@ function OverallTable({ entries }: { entries: LeaderboardEntry[] }) {
   );
 }
 
-function DailyTable({ results }: { results: DailyResult[] }) {
+function DailyTable({
+  results,
+  profiles,
+}: {
+  results: DailyResult[];
+  profiles: Map<string, CirclesProfile>;
+}) {
   if (results.length === 0) {
     return (
       <p className="text-center text-neutral-400 py-8">
@@ -180,9 +238,7 @@ function DailyTable({ results }: { results: DailyResult[] }) {
         {results.map((result, i) => (
           <tr key={result.address} className="border-t border-neutral-700">
             <td className="py-1.5 text-neutral-400">{i + 1}</td>
-            <td className="py-1.5 font-mono">
-              {truncateAddress(result.address)}
-            </td>
+            <PlayerCell address={result.address} profiles={profiles} />
             <td className="py-1.5 text-right">{result.guesses}</td>
             <td className="py-1.5 text-right">
               {result.solved ? (

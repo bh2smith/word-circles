@@ -49,3 +49,45 @@ export async function submitGameResult(
     { to: contractAddress, data: calldata, value: "0x0" },
   ]);
 }
+
+export interface CirclesProfile {
+  name: string;
+  address: string;
+  previewImageUrl: string | null;
+}
+
+const profileCache = new Map<string, CirclesProfile>();
+
+const PROFILES_API = "https://rpc.aboutcircles.com/profiles/search/addresses";
+
+export async function fetchCirclesProfiles(
+  addresses: string[],
+): Promise<Map<string, CirclesProfile>> {
+  const uncached = addresses.filter((a) => !profileCache.has(a.toLowerCase()));
+  if (uncached.length > 0) {
+    try {
+      const res = await fetch(PROFILES_API, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          addresses: uncached,
+          fetchComplete: true,
+        }),
+      });
+      if (res.ok) {
+        const profiles: CirclesProfile[] = await res.json();
+        for (const p of profiles) {
+          profileCache.set(p.address.toLowerCase(), p);
+        }
+      }
+    } catch {
+      // profiles are best-effort; fall back to truncated addresses
+    }
+  }
+  const result = new Map<string, CirclesProfile>();
+  for (const a of addresses) {
+    const cached = profileCache.get(a.toLowerCase());
+    if (cached) result.set(a.toLowerCase(), cached);
+  }
+  return result;
+}
