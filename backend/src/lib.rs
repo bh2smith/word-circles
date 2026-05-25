@@ -273,7 +273,11 @@ async fn get_leaderboard<R: GameRepository>(
     State(state): State<Arc<AppState<R>>>,
     Query(query): Query<LeaderboardQuery>,
 ) -> impl IntoResponse {
-    debug!(limit = query.limit, offset = query.offset, "GET /api/leaderboard");
+    debug!(
+        limit = query.limit,
+        offset = query.offset,
+        "GET /api/leaderboard"
+    );
     match state.repo.get_leaderboard(query.limit, query.offset).await {
         Ok(entries) => (StatusCode::OK, Json(serde_json::to_value(entries).unwrap())),
         Err(e) => {
@@ -364,11 +368,23 @@ async fn get_config<R: GameRepository>(State(state): State<Arc<AppState<R>>>) ->
         title = "Word Circles API",
         description = "Backend API for the Word Circles daily word game",
     ),
-    paths(health, get_config, get_game, post_guess, get_leaderboard, get_daily_leaderboard),
+    paths(
+        health,
+        get_config,
+        get_game,
+        post_guess,
+        get_leaderboard,
+        get_daily_leaderboard
+    ),
     components(schemas(
-        GameResponse, GuessRequest, GuessResponse, ErrorResponse,
-        game::LetterResult, ContractConfig,
-        LeaderboardEntry, DailyResult,
+        GameResponse,
+        GuessRequest,
+        GuessResponse,
+        ErrorResponse,
+        game::LetterResult,
+        ContractConfig,
+        LeaderboardEntry,
+        DailyResult,
     ))
 )]
 struct ApiDoc;
