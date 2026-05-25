@@ -22,7 +22,7 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgres://wordcircles:wordcircles@postgres:5432/wordcircles
+      DATABASE_URL: postgres://wordcircles:wordcircles@postgres.word-circles.public.dappnode:5432/wordcircles
       ARAK_DB_PATH: /data/arak.db
       RESOLVER_PRIVATE_KEY:
       RPC_URL: http://gnosis-erigon.dappnode:8545

@@ -14,8 +14,13 @@ import {
   initCircles,
   submitGameResult,
   getConnectedAddress,
+  subscribeWallet,
 } from "@/lib/circles";
-import { STATS_CONTRACT, encodeRecordGame } from "@/lib/contract";
+import {
+  STATS_CONTRACT,
+  encodeRecordGame,
+  hasPlayerPlayed,
+} from "@/lib/contract";
 
 interface SavedGame {
   gameId: number;
@@ -64,10 +69,15 @@ export default function Game() {
   const [showStats, setShowStats] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [walletAddress, setWalletAddress] = useState<string | null>(
+    getConnectedAddress(),
+  );
+  const [alreadyPlayed, setAlreadyPlayed] = useState<boolean | null>(null);
 
-  // Load game state and fetch current game ID
+  // Load game state, fetch current game ID, and subscribe to wallet
   useEffect(() => {
     initCircles();
+    const unsubscribe = subscribeWallet(setWalletAddress);
     const savedStats = loadStats();
     setStats(savedStats);
 
@@ -90,7 +100,18 @@ export default function Game() {
           setAnswer(undefined);
         }
       });
+
+    return unsubscribe;
   }, []);
+
+  // Check contract for duplicate play when wallet and gameId are available
+  useEffect(() => {
+    if (!walletAddress || gameId === null) return;
+    setAlreadyPlayed(null);
+    hasPlayerPlayed(walletAddress, gameId)
+      .then(setAlreadyPlayed)
+      .catch(() => setAlreadyPlayed(false));
+  }, [walletAddress, gameId]);
 
   const recordOnChain = useCallback(
     async (gId: number, won: boolean, numGuesses: number) => {
@@ -244,10 +265,37 @@ export default function Game() {
 
   const letterStates = computeLetterStates(guesses);
 
-  if (gameId === null) {
+  if (gameId === null || (isMiniappMode() && !walletAddress)) {
     return (
-      <div className="flex items-center justify-center h-screen text-white">
-        Loading...
+      <div className="flex flex-col items-center justify-center h-screen text-white gap-4">
+        <h1 className="text-2xl font-bold tracking-wider">WORD CIRCLES</h1>
+        <p className="text-neutral-400">
+          {gameId === null
+            ? "Loading..."
+            : "Connect your Circles wallet to play"}
+        </p>
+      </div>
+    );
+  }
+
+  if (isMiniappMode() && alreadyPlayed === null) {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen text-white gap-4">
+        <h1 className="text-2xl font-bold tracking-wider">WORD CIRCLES</h1>
+        <p className="text-neutral-400">Checking game status...</p>
+      </div>
+    );
+  }
+
+  if (alreadyPlayed && status === "playing") {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen text-white gap-4">
+        <h1 className="text-2xl font-bold tracking-wider">WORD CIRCLES</h1>
+        <p className="text-neutral-400">Game #{gameId}</p>
+        <p className="text-lg">You&apos;ve already played today!</p>
+        <p className="text-neutral-500 text-sm">
+          Come back tomorrow for a new word.
+        </p>
       </div>
     );
   }
