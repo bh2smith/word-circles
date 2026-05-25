@@ -1,7 +1,7 @@
 {
   "name": "word-circles.public.dappnode.eth",
-  "version": "0.3.2",
-  "upstreamVersion": "0.3.2",
+  "version": "0.4.0",
+  "upstreamVersion": "0.4.0",
   "shortDescription": "Word Circles game backend",
   "description": "Rust/Axum backend for the Word Circles game. Handles daily game creation, guess evaluation, and persistence via PostgreSQL.",
   "type": "service",
