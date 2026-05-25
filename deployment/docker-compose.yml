@@ -11,8 +11,12 @@ services:
       RESOLVER_PRIVATE_KEY:
       RPC_URL: http://gnosis-erigon.dappnode:8545
       COMMITMENT_ADDRESS: "0x6e99c40bd8b87290EB977336c4Be8b2106baB08f"
+      ESCROW_ADDRESS: "0x310bAdE38C51019093776bf1Ba51DA23583794c2"
       STATS_ADDRESS: "0xB96413584d7a4e07cc8c238cC4baA3474C956CCF"
       PVP_ENABLED: "false"
+      PVP_TIMEOUT_SECS: "10800"
+      DUNE_API_KEY:
+      DUNE_QUERY_ID: "7572687"
     volumes:
       - data:/data
     ports:
