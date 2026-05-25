@@ -1,35 +1,12 @@
-import { encodeFunctionData } from "viem";
+import { encodeFunctionData, parseAbi } from "viem";
 
 export const STATS_CONTRACT =
   "0xB96413584d7a4e07cc8c238cC4baA3474C956CCF" as const;
 
-export const statsAbi = [
-  {
-    type: "function",
-    name: "recordGame",
-    inputs: [
-      { name: "gameId", type: "uint32" },
-      { name: "won", type: "bool" },
-      { name: "guesses", type: "uint8" },
-    ],
-    outputs: [],
-    stateMutability: "nonpayable",
-  },
-  {
-    type: "function",
-    name: "getStats",
-    inputs: [{ name: "player", type: "address" }],
-    outputs: [
-      { name: "gamesPlayed", type: "uint32" },
-      { name: "gamesWon", type: "uint32" },
-      { name: "currentStreak", type: "uint32" },
-      { name: "maxStreak", type: "uint32" },
-      { name: "lastGameId", type: "uint32" },
-      { name: "guessDistribution", type: "uint32[6]" },
-    ],
-    stateMutability: "view",
-  },
-] as const;
+export const statsAbi = parseAbi([
+  "function recordGame(uint32 gameId, bool won, uint8 guesses)",
+  "function getStats(address player) view returns (uint32 gamesPlayed, uint32 gamesWon, uint32 currentStreak, uint32 maxStreak, uint32 lastGameId, uint32[6] guessDistribution)",
+]);
 
 export function encodeRecordGame(
   gameId: number,
