@@ -3,7 +3,7 @@
   "version": "0.3.2",
   "upstreamVersion": "0.3.2",
   "shortDescription": "Word Circles game backend",
-  "description": "Rust/Axum backend for the Word Circles game. Handles daily game creation, guess evaluation, and persistence via SQLite.",
+  "description": "Rust/Axum backend for the Word Circles game. Handles daily game creation, guess evaluation, and persistence via PostgreSQL.",
   "type": "service",
   "architectures": ["linux/amd64"],
   "author": "bh2smith",
@@ -18,6 +18,13 @@
       "description": "Game backend API",
       "serviceName": "api",
       "port": 3001
+    },
+    {
+      "name": "Swagger UI",
+      "description": "API documentation",
+      "serviceName": "api",
+      "port": 3001,
+      "path": "/swagger-ui"
     }
   ],
   "categories": ["Developer tools"],
@@ -71,6 +78,18 @@
         "description": "Deployed WordCircleStats contract address on Gnosis",
         "required": false,
         "default": "0xB96413584d7a4e07cc8c238cC4baA3474C956CCF"
+      },
+      {
+        "id": "database_url",
+        "target": {
+          "type": "environment",
+          "name": "DATABASE_URL",
+          "service": "api"
+        },
+        "title": "Database URL",
+        "description": "PostgreSQL connection string. Defaults to the bundled postgres container.",
+        "required": false,
+        "default": "postgres://wordcircles:wordcircles@postgres:5432/wordcircles"
       },
       {
         "id": "pvp_enabled",

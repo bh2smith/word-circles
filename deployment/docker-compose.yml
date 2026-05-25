@@ -1,12 +1,28 @@
 version: "3.8"
 
 services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: wordcircles
+      POSTGRES_PASSWORD: wordcircles
+      POSTGRES_DB: wordcircles
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wordcircles"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   api:
     build:
       context: api
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
+      DATABASE_URL: postgres://wordcircles:wordcircles@postgres:5432/wordcircles
       ARAK_DB_PATH: /data/arak.db
       RESOLVER_PRIVATE_KEY:
       RPC_URL: http://gnosis-erigon.dappnode:8545
@@ -22,7 +38,10 @@ services:
     ports:
       - "3001:3001"
     depends_on:
-      - indexer
+      postgres:
+        condition: service_healthy
+      indexer:
+        condition: service_started
 
   indexer:
     build:
@@ -37,3 +56,4 @@ services:
 
 volumes:
   data: {}
+  pgdata: {}
