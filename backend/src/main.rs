@@ -115,7 +115,10 @@ async fn main() {
 }
 
 async fn run_bootstrap(repo: &SqliteRepository, query_id: u32) {
-    tracing::info!(query_id, "Bootstrap: fetching GameRecorded events from Dune");
+    tracing::info!(
+        query_id,
+        "Bootstrap: fetching GameRecorded events from Dune"
+    );
 
     let events = match dune::fetch_game_recorded_events(query_id).await {
         Ok(events) => events,
