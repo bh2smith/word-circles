@@ -17,17 +17,16 @@ async fn main() {
         )
         .init();
 
-    let args: Vec<String> = std::env::args().collect();
-    if args.get(1).map(|s| s.as_str()) == Some("bootstrap") {
-        run_bootstrap().await;
-        return;
-    }
-
     let port = std::env::var("PORT").unwrap_or_else(|_| "3001".into());
     let db_path = std::env::var("DATABASE_PATH").unwrap_or_else(|_| "word-circles.db".into());
     let addr = format!("0.0.0.0:{port}");
 
     let repo = SqliteRepository::new(&db_path).expect("Failed to initialize database");
+
+    if let Ok(query_id) = std::env::var("DUNE_QUERY_ID") {
+        let query_id: u32 = query_id.parse().expect("DUNE_QUERY_ID must be a number");
+        run_bootstrap(&repo, query_id).await;
+    }
 
     let pvp_enabled = std::env::var("PVP_ENABLED")
         .map(|v| v == "true" || v == "1")
@@ -115,29 +114,25 @@ async fn main() {
     axum::serve(listener, app).await.unwrap();
 }
 
-async fn run_bootstrap() {
-    let query_id: u32 = std::env::var("DUNE_QUERY_ID")
-        .expect("DUNE_QUERY_ID env var is required")
-        .parse()
-        .expect("DUNE_QUERY_ID must be a number");
-    let db_path = std::env::var("DATABASE_PATH").unwrap_or_else(|_| "word-circles.db".into());
+async fn run_bootstrap(repo: &SqliteRepository, query_id: u32) {
+    tracing::info!(query_id, "Bootstrap: fetching GameRecorded events from Dune");
 
-    println!("Bootstrap: fetching GameRecorded events from Dune (query {query_id})...");
+    let events = match dune::fetch_game_recorded_events(query_id).await {
+        Ok(events) => events,
+        Err(e) => {
+            tracing::error!("Bootstrap failed: {e}");
+            return;
+        }
+    };
 
-    let events = dune::fetch_game_recorded_events(query_id)
-        .await
-        .expect("Failed to fetch events from Dune");
-
-    println!("Bootstrap: fetched {} records from Dune", events.len());
-
-    let repo = SqliteRepository::new(&db_path).expect("Failed to initialize database");
+    tracing::info!(count = events.len(), "Bootstrap: fetched records from Dune");
 
     let mut backfilled = 0u64;
     let mut max_block: u64 = 0;
 
     for event in &events {
         indexer::backfill_game_result(
-            &repo,
+            repo,
             event.game_id as u32,
             &event.player,
             event.won,
@@ -156,13 +151,15 @@ async fn run_bootstrap() {
             repo.set_indexer_cursor(max_block)
                 .await
                 .expect("Failed to set indexer cursor");
-            println!("Bootstrap: indexer cursor set to block {max_block}");
+            tracing::info!(block = max_block, "Bootstrap: indexer cursor set");
         } else {
-            println!(
-                "Bootstrap: cursor already at {current_cursor} (>= {max_block}), not updating"
+            tracing::info!(
+                current_cursor,
+                max_block,
+                "Bootstrap: cursor already ahead, not updating"
             );
         }
     }
 
-    println!("Bootstrap complete: {backfilled} records backfilled, cursor at {max_block}");
+    tracing::info!(backfilled, max_block, "Bootstrap complete");
 }
