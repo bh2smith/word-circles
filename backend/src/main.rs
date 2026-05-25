@@ -18,8 +18,8 @@ async fn main() {
         .init();
 
     let port = std::env::var("PORT").unwrap_or_else(|_| "3001".into());
-    let database_url =
-        std::env::var("DATABASE_URL").expect("DATABASE_URL must be set (postgres connection string)");
+    let database_url = std::env::var("DATABASE_URL")
+        .expect("DATABASE_URL must be set (postgres connection string)");
     let addr = format!("0.0.0.0:{port}");
 
     let repo = PostgresRepository::new(&database_url)

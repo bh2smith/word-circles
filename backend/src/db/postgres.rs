@@ -69,8 +69,17 @@ impl GameRepository for PostgresRepository {
 
     async fn get_game(&self, game_id: &str) -> Result<Option<GameRecord>, RepositoryError> {
         let row: Option<(
-            String, String, i32, Option<String>, Option<String>, String, String,
-            Option<i32>, Option<String>, Option<String>, Option<i32>,
+            String,
+            String,
+            i32,
+            Option<String>,
+            Option<String>,
+            String,
+            String,
+            Option<i32>,
+            Option<String>,
+            Option<String>,
+            Option<i32>,
         )> = sqlx::query_as(
             "SELECT id, game_type, word_index, salt, commitment, status, created_at::text,
                     capacity, token, amount, timeout_secs
@@ -119,13 +128,12 @@ impl GameRepository for PostgresRepository {
             .await
             .map_err(|e| RepositoryError::Internal(e.to_string()))?;
 
-        let row: (i64, Vec<u8>, String) = sqlx::query_as(
-            "SELECT id, address, created_at::text FROM players WHERE address = $1",
-        )
-        .bind(&bytes)
-        .fetch_one(&self.pool)
-        .await
-        .map_err(|e| RepositoryError::Internal(e.to_string()))?;
+        let row: (i64, Vec<u8>, String) =
+            sqlx::query_as("SELECT id, address, created_at::text FROM players WHERE address = $1")
+                .bind(&bytes)
+                .fetch_one(&self.pool)
+                .await
+                .map_err(|e| RepositoryError::Internal(e.to_string()))?;
 
         Ok(PlayerRecord {
             id: row.0,
@@ -398,8 +406,17 @@ impl GameRepository for PostgresRepository {
 
     async fn get_active_pvp_games(&self) -> Result<Vec<GameRecord>, RepositoryError> {
         let rows: Vec<(
-            String, String, i32, Option<String>, Option<String>, String, String,
-            Option<i32>, Option<String>, Option<String>, Option<i32>,
+            String,
+            String,
+            i32,
+            Option<String>,
+            Option<String>,
+            String,
+            String,
+            Option<i32>,
+            Option<String>,
+            Option<String>,
+            Option<i32>,
         )> = sqlx::query_as(
             "SELECT id, game_type, word_index, salt, commitment, status, created_at::text,
                     capacity, token, amount, timeout_secs
@@ -438,9 +455,9 @@ fn is_unique_violation(e: &sqlx::Error) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::models::*;
     use super::super::repository::*;
+    use super::*;
     use sqlx::PgPool;
 
     fn daily_game(id: &str, word_index: usize) -> GameRecord {

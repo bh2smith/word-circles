@@ -136,10 +136,7 @@ async fn invalid_word_returns_400(pool: PgPool) {
 
 #[sqlx::test(migrations = "./migrations")]
 async fn too_short_returns_400(pool: PgPool) {
-    let resp = app(pool)
-        .oneshot(guess_request(1, "hi", 0))
-        .await
-        .unwrap();
+    let resp = app(pool).oneshot(guess_request(1, "hi", 0)).await.unwrap();
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 
     let body = json_body(resp).await;
@@ -265,7 +262,10 @@ async fn leaderboard_with_player_data(pool: PgPool) {
     let body = json_body(resp).await;
     let entries = body.as_array().unwrap();
     assert_eq!(entries.len(), 1);
-    assert_eq!(entries[0]["address"], "0x0000000000000000000000000000000000player1");
+    assert_eq!(
+        entries[0]["address"],
+        "0x0000000000000000000000000000000000player1"
+    );
     assert_eq!(entries[0]["games_played"], 1);
 }
 
@@ -380,7 +380,10 @@ async fn daily_leaderboard_with_results(pool: PgPool) {
     let body = json_body(resp).await;
     let results = body.as_array().unwrap();
     assert_eq!(results.len(), 1);
-    assert_eq!(results[0]["address"], "0x00000000000000000000000000000000000daily1");
+    assert_eq!(
+        results[0]["address"],
+        "0x00000000000000000000000000000000000daily1"
+    );
     assert_eq!(results[0]["guesses"], 1);
 }
 
