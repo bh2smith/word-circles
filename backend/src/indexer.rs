@@ -1,6 +1,6 @@
 use crate::chain::ResolverClient;
-use crate::db::models::GameRecord;
-use crate::db::repository::GameRepository;
+use crate::db::models::{GameRecord, GuessRecord};
+use crate::db::repository::{GameRepository, RepositoryError};
 use crate::game;
 use rusqlite::Connection;
 use std::sync::Arc;
@@ -82,6 +82,7 @@ pub async fn run<R: GameRepository>(repo: Arc<R>, config: IndexerConfig) {
                     guesses,
                 } => {
                     tracing::info!(player, game_id, won, guesses, block_number, "GameRecorded");
+                    backfill_game_result(repo.as_ref(), *game_id, player, *won, *guesses).await;
                 }
             }
         }
@@ -218,6 +219,54 @@ fn read_new_events(arak_db_path: &str, cursor: u64) -> Result<Vec<ArakEvent>, ru
 
     events.sort_by_key(|e| e.block_number());
     Ok(events)
+}
+
+async fn backfill_game_result<R: GameRepository>(
+    repo: &R,
+    game_id: u32,
+    player: &str,
+    won: bool,
+    guesses: u8,
+) {
+    let game_id_str = game_id.to_string();
+
+    if let Ok(None) = repo.get_game(&game_id_str).await {
+        let record = GameRecord {
+            id: game_id_str.clone(),
+            game_type: "daily".into(),
+            word_index: game::answer_index(game_id),
+            salt: None,
+            commitment: None,
+            status: "active".into(),
+            created_at: String::new(),
+        };
+        let _ = repo.create_game(&record).await;
+    }
+
+    let player_record = match repo.get_or_create_player(player).await {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::warn!(player, game_id, "Failed to create player for backfill: {e}");
+            return;
+        }
+    };
+
+    let guess_number = if guesses > 0 { guesses as u32 - 1 } else { 0 };
+    let guess = GuessRecord {
+        id: None,
+        game_id: game_id_str,
+        player_id: player_record.id,
+        guess_number,
+        word: String::new(),
+        results: String::new(),
+        is_correct: won,
+        created_at: None,
+    };
+    match repo.record_guess(&guess).await {
+        Ok(()) => tracing::debug!(player, game_id, "Backfilled game result"),
+        Err(RepositoryError::Conflict(_)) => {}
+        Err(e) => tracing::warn!(player, game_id, "Failed to backfill result: {e}"),
+    }
 }
 
 async fn prepare_pvp_game<R: GameRepository>(
