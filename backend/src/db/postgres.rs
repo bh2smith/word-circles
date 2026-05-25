@@ -5,6 +5,7 @@ use super::repository::{GameRepository, RepositoryError};
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
 
+#[derive(Clone)]
 pub struct PostgresRepository {
     pool: PgPool,
 }

@@ -3,8 +3,8 @@ use std::time::Duration;
 use tracing_subscriber::EnvFilter;
 use word_circles_backend::build_router;
 use word_circles_backend::chain::ResolverClient;
+use word_circles_backend::db::postgres::PostgresRepository;
 use word_circles_backend::db::repository::GameRepository;
-use word_circles_backend::db::sqlite::SqliteRepository;
 use word_circles_backend::dune;
 use word_circles_backend::indexer;
 use word_circles_backend::settlement;
@@ -18,10 +18,13 @@ async fn main() {
         .init();
 
     let port = std::env::var("PORT").unwrap_or_else(|_| "3001".into());
-    let db_path = std::env::var("DATABASE_PATH").unwrap_or_else(|_| "word-circles.db".into());
+    let database_url =
+        std::env::var("DATABASE_URL").expect("DATABASE_URL must be set (postgres connection string)");
     let addr = format!("0.0.0.0:{port}");
 
-    let repo = SqliteRepository::new(&db_path).expect("Failed to initialize database");
+    let repo = PostgresRepository::new(&database_url)
+        .await
+        .expect("Failed to initialize database");
 
     if let Ok(query_id) = std::env::var("DUNE_QUERY_ID") {
         let query_id: u32 = query_id.parse().expect("DUNE_QUERY_ID must be a number");
@@ -70,9 +73,7 @@ async fn main() {
             pvp_timeout_secs,
         };
 
-        let indexer_repo = Arc::new(
-            SqliteRepository::new(&db_path).expect("Failed to initialize indexer database"),
-        );
+        let indexer_repo = Arc::new(repo.clone());
         tokio::spawn(async move {
             indexer::run(indexer_repo, config).await;
         });
@@ -86,9 +87,7 @@ async fn main() {
                 .ok()
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(30);
-            let timeout_repo = Arc::new(
-                SqliteRepository::new(&db_path).expect("Failed to initialize timeout database"),
-            );
+            let timeout_repo = Arc::new(repo.clone());
             let timeout_resolver = Arc::clone(resolver);
             tokio::spawn(async move {
                 settlement::run_timeout_loop(
@@ -114,7 +113,7 @@ async fn main() {
     axum::serve(listener, app).await.unwrap();
 }
 
-async fn run_bootstrap(repo: &SqliteRepository, query_id: u32) {
+async fn run_bootstrap<R: GameRepository>(repo: &R, query_id: u32) {
     tracing::info!(
         query_id,
         "Bootstrap: fetching GameRecorded events from Dune"
