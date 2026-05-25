@@ -12,7 +12,8 @@ pub struct PostgresRepository {
 
 fn decode_address(hex_str: &str) -> Vec<u8> {
     let stripped = hex_str.strip_prefix("0x").unwrap_or(hex_str);
-    hex::decode(stripped.to_lowercase()).unwrap_or_default()
+    let normalized = format!("{:0>40}", stripped.to_lowercase());
+    hex::decode(&normalized).expect("invalid hex address")
 }
 
 fn encode_address(bytes: &[u8]) -> String {
@@ -218,7 +219,7 @@ impl GameRepository for PostgresRepository {
                     COALESCE(
                         AVG(CASE WHEN g.is_correct THEN g.guess_number + 1 END),
                         0.0
-                    ) AS avg_guesses
+                    )::float8 AS avg_guesses
              FROM guesses g
              JOIN players p ON p.id = g.player_id
              GROUP BY p.address
@@ -243,7 +244,7 @@ impl GameRepository for PostgresRepository {
     }
 
     async fn get_daily_results(&self, game_id: &str) -> Result<Vec<DailyResult>, RepositoryError> {
-        let rows: Vec<(Vec<u8>, i64, bool)> = sqlx::query_as(
+        let rows: Vec<(Vec<u8>, i32, bool)> = sqlx::query_as(
             "SELECT p.address,
                     MAX(g.guess_number) + 1 AS guesses,
                     BOOL_OR(g.is_correct) AS solved
@@ -565,15 +566,29 @@ mod tests {
         let game = pvp_game("0xgame1");
         repo.create_game(&game).await.unwrap();
 
-        let p1 = repo.get_or_create_player("0xplayer1").await.unwrap();
-        let p2 = repo.get_or_create_player("0xplayer2").await.unwrap();
+        let p1 = repo
+            .get_or_create_player("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+            .await
+            .unwrap();
+        let p2 = repo
+            .get_or_create_player("0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
+            .await
+            .unwrap();
 
-        repo.add_game_player("0xgame1", p1.id, "0xplayer1")
-            .await
-            .unwrap();
-        repo.add_game_player("0xgame1", p2.id, "0xplayer2")
-            .await
-            .unwrap();
+        repo.add_game_player(
+            "0xgame1",
+            p1.id,
+            "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        )
+        .await
+        .unwrap();
+        repo.add_game_player(
+            "0xgame1",
+            p2.id,
+            "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        )
+        .await
+        .unwrap();
 
         let players = repo.get_game_players("0xgame1").await.unwrap();
         assert_eq!(players.len(), 2);
@@ -586,10 +601,17 @@ mod tests {
         let game = pvp_game("0xgame2");
         repo.create_game(&game).await.unwrap();
 
-        let p = repo.get_or_create_player("0xplayer1").await.unwrap();
-        repo.add_game_player("0xgame2", p.id, "0xplayer1")
+        let p = repo
+            .get_or_create_player("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
             .await
             .unwrap();
+        repo.add_game_player(
+            "0xgame2",
+            p.id,
+            "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        )
+        .await
+        .unwrap();
 
         repo.update_game_player_started("0xgame2", p.id)
             .await
@@ -627,14 +649,25 @@ mod tests {
         let repo = PostgresRepository::from_pool(pool);
         let game = pvp_game("0xgame4");
         repo.create_game(&game).await.unwrap();
-        let p = repo.get_or_create_player("0xplayer1").await.unwrap();
+        let p = repo
+            .get_or_create_player("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+            .await
+            .unwrap();
 
-        repo.add_game_player("0xgame4", p.id, "0xplayer1")
-            .await
-            .unwrap();
-        repo.add_game_player("0xgame4", p.id, "0xplayer1")
-            .await
-            .unwrap();
+        repo.add_game_player(
+            "0xgame4",
+            p.id,
+            "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        )
+        .await
+        .unwrap();
+        repo.add_game_player(
+            "0xgame4",
+            p.id,
+            "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        )
+        .await
+        .unwrap();
 
         let players = repo.get_game_players("0xgame4").await.unwrap();
         assert_eq!(players.len(), 1);

@@ -169,7 +169,12 @@ async fn guess_with_player_persists(pool: PgPool) {
     let game_id = game_body["gameId"].as_u64().unwrap();
 
     let resp = app
-        .oneshot(guess_request_with_player(game_id, "slate", 0, "0xtest"))
+        .oneshot(guess_request_with_player(
+            game_id,
+            "slate",
+            0,
+            "0xcccccccccccccccccccccccccccccccccccccccc",
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
@@ -245,7 +250,12 @@ async fn leaderboard_with_player_data(pool: PgPool) {
     let game_id = game_body["gameId"].as_u64().unwrap();
 
     app.clone()
-        .oneshot(guess_request_with_player(game_id, "crane", 0, "0xplayer1"))
+        .oneshot(guess_request_with_player(
+            game_id,
+            "crane",
+            0,
+            "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        ))
         .await
         .unwrap();
 
@@ -264,7 +274,7 @@ async fn leaderboard_with_player_data(pool: PgPool) {
     assert_eq!(entries.len(), 1);
     assert_eq!(
         entries[0]["address"],
-        "0x0000000000000000000000000000000000player1"
+        "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     );
     assert_eq!(entries[0]["games_played"], 1);
 }
@@ -363,7 +373,12 @@ async fn daily_leaderboard_with_results(pool: PgPool) {
     let game_id = game_body["gameId"].as_u64().unwrap();
 
     app.clone()
-        .oneshot(guess_request_with_player(game_id, "crane", 0, "0xdaily1"))
+        .oneshot(guess_request_with_player(
+            game_id,
+            "crane",
+            0,
+            "0xdddddddddddddddddddddddddddddddddddddddd",
+        ))
         .await
         .unwrap();
 
@@ -382,7 +397,7 @@ async fn daily_leaderboard_with_results(pool: PgPool) {
     assert_eq!(results.len(), 1);
     assert_eq!(
         results[0]["address"],
-        "0x00000000000000000000000000000000000daily1"
+        "0xdddddddddddddddddddddddddddddddddddddddd"
     );
     assert_eq!(results[0]["guesses"], 1);
 }
@@ -406,12 +421,18 @@ async fn setup_pvp_game(repo: &PostgresRepository) -> String {
     };
     repo.create_game(&game).await.unwrap();
 
-    let p1 = repo.get_or_create_player("0xplayer1").await.unwrap();
-    let p2 = repo.get_or_create_player("0xplayer2").await.unwrap();
-    repo.add_game_player(game_id, p1.id, "0xplayer1")
+    let p1 = repo
+        .get_or_create_player("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
         .await
         .unwrap();
-    repo.add_game_player(game_id, p2.id, "0xplayer2")
+    let p2 = repo
+        .get_or_create_player("0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
+        .await
+        .unwrap();
+    repo.add_game_player(game_id, p1.id, "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+        .await
+        .unwrap();
+    repo.add_game_player(game_id, p2.id, "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
         .await
         .unwrap();
 
@@ -503,7 +524,12 @@ async fn pvp_guess_rejects_non_player(pool: PgPool) {
     let app = build_router(repo, None, None);
 
     let resp = app
-        .oneshot(pvp_guess(&game_id, "crane", 0, "0xstranger"))
+        .oneshot(pvp_guess(
+            &game_id,
+            "crane",
+            0,
+            "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::FORBIDDEN);
@@ -517,7 +543,12 @@ async fn pvp_guess_starts_timer_and_records(pool: PgPool) {
 
     let resp = app
         .clone()
-        .oneshot(pvp_guess(&game_id, "crane", 0, "0xplayer1"))
+        .oneshot(pvp_guess(
+            &game_id,
+            "crane",
+            0,
+            "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
@@ -539,7 +570,7 @@ async fn pvp_guess_starts_timer_and_records(pool: PgPool) {
     let players = status["players"].as_array().unwrap();
     let p1 = players
         .iter()
-        .find(|p| p["address"] == "0x00000000000000000000000000000000000player1")
+        .find(|p| p["address"] == "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
         .unwrap();
     assert_eq!(p1["status"], "playing");
 }
@@ -552,7 +583,12 @@ async fn pvp_guess_marks_finished_on_last_guess(pool: PgPool) {
 
     let resp = app
         .clone()
-        .oneshot(pvp_guess(&game_id, "crane", 5, "0xplayer1"))
+        .oneshot(pvp_guess(
+            &game_id,
+            "crane",
+            5,
+            "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
@@ -572,7 +608,7 @@ async fn pvp_guess_marks_finished_on_last_guess(pool: PgPool) {
     let players = status["players"].as_array().unwrap();
     let p1 = players
         .iter()
-        .find(|p| p["address"] == "0x00000000000000000000000000000000000player1")
+        .find(|p| p["address"] == "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
         .unwrap();
     assert_eq!(p1["status"], "finished");
 }
