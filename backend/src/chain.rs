@@ -37,6 +37,16 @@ sol! {
             uint256 amountEarned
         ) external;
     }
+
+    #[sol(rpc)]
+    interface IWordCirclesEscrow {
+        function resolve(
+            bytes32 gameId,
+            address[] calldata winners,
+            uint256[] calldata amounts,
+            bytes calldata signature
+        ) external;
+    }
 }
 
 #[derive(Debug)]
@@ -62,6 +72,7 @@ pub struct ResolverClient {
     signer: PrivateKeySigner,
     rpc_url: String,
     pub commitment_address: Address,
+    pub escrow_address: Option<Address>,
     pub stats_address: Option<Address>,
 }
 
@@ -73,6 +84,9 @@ impl ResolverClient {
             std::env::var("RPC_URL").map_err(|_| ChainError::Config("RPC_URL not set".into()))?;
         let commitment_hex = std::env::var("COMMITMENT_ADDRESS")
             .map_err(|_| ChainError::Config("COMMITMENT_ADDRESS not set".into()))?;
+        let escrow_address = std::env::var("ESCROW_ADDRESS")
+            .ok()
+            .and_then(|s| s.parse().ok());
         let stats_address = std::env::var("STATS_ADDRESS")
             .ok()
             .and_then(|s| s.parse().ok());
@@ -88,6 +102,7 @@ impl ResolverClient {
             signer,
             rpc_url,
             commitment_address,
+            escrow_address,
             stats_address,
         })
     }
@@ -174,6 +189,31 @@ impl ResolverClient {
         Ok(Bytes::from(sig.as_bytes().to_vec()))
     }
 
+    pub async fn resolve_escrow(
+        &self,
+        game_id: [u8; 32],
+        winners: Vec<Address>,
+        amounts: Vec<U256>,
+        signature: Bytes,
+    ) -> Result<FixedBytes<32>, ChainError> {
+        let escrow = self
+            .escrow_address
+            .ok_or_else(|| ChainError::Config("ESCROW_ADDRESS not set".into()))?;
+        let provider = self.build_provider()?;
+        let contract = IWordCirclesEscrow::new(escrow, &provider);
+
+        let receipt = contract
+            .resolve(game_id.into(), winners, amounts, signature)
+            .send()
+            .await
+            .map_err(|e| ChainError::Transport(format!("resolve send: {e}")))?
+            .get_receipt()
+            .await
+            .map_err(|e| ChainError::Transport(format!("resolve receipt: {e}")))?;
+
+        Ok(receipt.transaction_hash)
+    }
+
     fn build_provider(&self) -> Result<impl alloy::providers::Provider, ChainError> {
         let url: url::Url = self
             .rpc_url
@@ -199,6 +239,7 @@ mod tests {
             signer,
             rpc_url: "http://localhost:8545".into(),
             commitment_address: Address::ZERO,
+            escrow_address: None,
             stats_address: None,
         }
     }

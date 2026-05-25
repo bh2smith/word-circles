@@ -306,7 +306,7 @@ async fn backfill_game_result<R: GameRepository>(
     }
 }
 
-fn parse_game_id_bytes(game_id: &str) -> [u8; 32] {
+pub fn parse_game_id_bytes(game_id: &str) -> [u8; 32] {
     let stripped = game_id.trim_start_matches("0x");
     let mut buf = [0u8; 32];
     if let Ok(decoded) = hex::decode(stripped) {

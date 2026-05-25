@@ -499,6 +499,44 @@ impl GameRepository for SqliteRepository {
         .await
         .map_err(|e| RepositoryError::Internal(e.to_string()))?
     }
+
+    async fn get_active_pvp_games(&self) -> Result<Vec<GameRecord>, RepositoryError> {
+        let conn = self.conn.clone();
+        tokio::task::spawn_blocking(move || {
+            let conn = conn.lock().unwrap();
+            let mut stmt = conn
+                .prepare(
+                    "SELECT id, game_type, word_index, salt, commitment, status, created_at,
+                            capacity, token, amount, timeout_secs
+                     FROM games
+                     WHERE game_type = 'pvp' AND status = 'active'",
+                )
+                .map_err(|e| RepositoryError::Internal(e.to_string()))?;
+
+            let rows = stmt
+                .query_map([], |row| {
+                    Ok(GameRecord {
+                        id: row.get(0)?,
+                        game_type: row.get(1)?,
+                        word_index: row.get::<_, i64>(2)? as usize,
+                        salt: row.get(3)?,
+                        commitment: row.get(4)?,
+                        status: row.get(5)?,
+                        created_at: row.get(6)?,
+                        capacity: row.get::<_, Option<i64>>(7)?.map(|v| v as u32),
+                        token: row.get(8)?,
+                        amount: row.get(9)?,
+                        timeout_secs: row.get::<_, Option<i64>>(10)?.map(|v| v as u32),
+                    })
+                })
+                .map_err(|e| RepositoryError::Internal(e.to_string()))?;
+
+            rows.collect::<Result<Vec<_>, _>>()
+                .map_err(|e| RepositoryError::Internal(e.to_string()))
+        })
+        .await
+        .map_err(|e| RepositoryError::Internal(e.to_string()))?
+    }
 }
 
 #[cfg(test)]

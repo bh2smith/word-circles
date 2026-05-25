@@ -2,6 +2,7 @@ pub mod chain;
 pub mod db;
 pub mod game;
 pub mod indexer;
+pub mod settlement;
 mod words;
 
 use axum::{
@@ -26,6 +27,7 @@ use utoipa_swagger_ui::SwaggerUi;
 struct AppState<R: GameRepository> {
     repo: R,
     contract_config: Option<ContractConfig>,
+    resolver: Option<Arc<chain::ResolverClient>>,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -281,7 +283,12 @@ async fn post_guess<R: GameRepository>(
                 )
                 .await;
 
-            // TODO (PR 2): check if all players finished and trigger settlement
+            if let Ok(updated_players) = state.repo.get_game_players(game_id_str).await {
+                let all_done = updated_players.iter().all(|p| p.finished_at.is_some());
+                if all_done {
+                    tracing::info!(game_id = %game_id_str, "All players finished — settlement pending");
+                }
+            }
         }
 
         let response = GuessResponse {
@@ -604,10 +611,15 @@ async fn get_config<R: GameRepository>(State(state): State<Arc<AppState<R>>>) ->
 )]
 struct ApiDoc;
 
-pub fn build_router<R: GameRepository>(repo: R, contract_config: Option<ContractConfig>) -> Router {
+pub fn build_router<R: GameRepository>(
+    repo: R,
+    contract_config: Option<ContractConfig>,
+    resolver: Option<Arc<chain::ResolverClient>>,
+) -> Router {
     let state = Arc::new(AppState {
         repo,
         contract_config,
+        resolver,
     });
     Router::new()
         .route("/health", get(health))

@@ -5,6 +5,7 @@ use word_circles_backend::build_router;
 use word_circles_backend::chain::ResolverClient;
 use word_circles_backend::db::sqlite::SqliteRepository;
 use word_circles_backend::indexer;
+use word_circles_backend::settlement;
 
 #[tokio::main]
 async fn main() {
@@ -71,8 +72,34 @@ async fn main() {
         tracing::info!("Event listener enabled (polling arak)");
     }
 
+    if pvp_enabled {
+        if let Some(ref resolver) = resolver {
+            let timeout_poll_secs: u64 = std::env::var("TIMEOUT_POLL_SECS")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(30);
+            let timeout_repo = Arc::new(
+                SqliteRepository::new(&db_path).expect("Failed to initialize timeout database"),
+            );
+            let timeout_resolver = Arc::clone(resolver);
+            tokio::spawn(async move {
+                settlement::run_timeout_loop(
+                    timeout_repo,
+                    timeout_resolver,
+                    Duration::from_secs(timeout_poll_secs),
+                    pvp_timeout_secs,
+                )
+                .await;
+            });
+            tracing::info!(
+                poll_secs = timeout_poll_secs,
+                "Settlement timeout loop enabled"
+            );
+        }
+    }
+
     let contract_config = resolver.as_ref().map(|r| r.config(pvp_enabled));
-    let app = build_router(repo, contract_config);
+    let app = build_router(repo, contract_config, resolver);
 
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
     println!("Backend listening on {addr}");

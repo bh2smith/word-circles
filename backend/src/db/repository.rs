@@ -114,4 +114,8 @@ pub trait GameRepository: Send + Sync + 'static {
         commitment: &str,
         status: &str,
     ) -> impl Future<Output = Result<(), RepositoryError>> + Send;
+
+    fn get_active_pvp_games(
+        &self,
+    ) -> impl Future<Output = Result<Vec<GameRecord>, RepositoryError>> + Send;
 }

@@ -9,7 +9,7 @@ use word_circles_backend::db::sqlite::SqliteRepository;
 
 fn app() -> axum::Router {
     let repo = SqliteRepository::new(":memory:").unwrap();
-    build_router(repo, None)
+    build_router(repo, None, None)
 }
 
 async fn json_body(resp: axum::response::Response) -> serde_json::Value {
@@ -292,7 +292,7 @@ async fn config_with_resolver() {
         stats_address: None,
         pvp_enabled: false,
     };
-    let app = build_router(repo, Some(config));
+    let app = build_router(repo, Some(config), None);
 
     let resp = app
         .oneshot(Request::get("/api/config").body(Body::empty()).unwrap())
@@ -324,7 +324,7 @@ async fn config_with_pvp_enabled() {
         stats_address: None,
         pvp_enabled: true,
     };
-    let app = build_router(repo, Some(config));
+    let app = build_router(repo, Some(config), None);
 
     let resp = app
         .oneshot(Request::get("/api/config").body(Body::empty()).unwrap())
@@ -419,7 +419,7 @@ fn pvp_guess(game_id: &str, guess: &str, guess_number: u32, player: &str) -> Req
 async fn pvp_game_status() {
     let repo = SqliteRepository::new(":memory:").unwrap();
     let game_id = setup_pvp_game(&repo).await;
-    let app = build_router(repo, None);
+    let app = build_router(repo, None, None);
 
     let resp = app
         .oneshot(
@@ -458,7 +458,7 @@ async fn pvp_game_not_found() {
 async fn pvp_guess_requires_player() {
     let repo = SqliteRepository::new(":memory:").unwrap();
     let game_id = setup_pvp_game(&repo).await;
-    let app = build_router(repo, None);
+    let app = build_router(repo, None, None);
 
     let payload = serde_json::json!({
         "guess": "crane",
@@ -484,7 +484,7 @@ async fn pvp_guess_requires_player() {
 async fn pvp_guess_rejects_non_player() {
     let repo = SqliteRepository::new(":memory:").unwrap();
     let game_id = setup_pvp_game(&repo).await;
-    let app = build_router(repo, None);
+    let app = build_router(repo, None, None);
 
     let resp = app
         .oneshot(pvp_guess(&game_id, "crane", 0, "0xstranger"))
@@ -497,7 +497,7 @@ async fn pvp_guess_rejects_non_player() {
 async fn pvp_guess_starts_timer_and_records() {
     let repo = SqliteRepository::new(":memory:").unwrap();
     let game_id = setup_pvp_game(&repo).await;
-    let app = build_router(repo, None);
+    let app = build_router(repo, None, None);
 
     let resp = app
         .clone()
@@ -533,7 +533,7 @@ async fn pvp_guess_starts_timer_and_records() {
 async fn pvp_guess_marks_finished_on_last_guess() {
     let repo = SqliteRepository::new(":memory:").unwrap();
     let game_id = setup_pvp_game(&repo).await;
-    let app = build_router(repo, None);
+    let app = build_router(repo, None, None);
 
     // Submit final guess (guess_number=5 is the 6th guess)
     let resp = app
