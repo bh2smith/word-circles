@@ -138,10 +138,10 @@ async fn run_bootstrap() {
     for event in &events {
         indexer::backfill_game_result(
             &repo,
-            event.game_id,
+            event.game_id as u32,
             &event.player,
             event.won,
-            event.guesses,
+            event.guesses as u8,
         )
         .await;
         backfilled += 1;
