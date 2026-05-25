@@ -23,8 +23,13 @@ async fn main() {
         .map(|v| v == "true" || v == "1")
         .unwrap_or(false);
 
+    let pvp_timeout_secs: u32 = std::env::var("PVP_TIMEOUT_SECS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(10800);
+
     if pvp_enabled {
-        tracing::info!("PvP mode enabled");
+        tracing::info!(timeout_secs = pvp_timeout_secs, "PvP mode enabled");
     }
 
     let resolver = match ResolverClient::from_env() {
@@ -53,6 +58,7 @@ async fn main() {
             poll_interval: Duration::from_secs(poll_secs),
             resolver: resolver.clone(),
             pvp_enabled,
+            pvp_timeout_secs,
         };
 
         let indexer_repo = Arc::new(

@@ -1,4 +1,6 @@
-use super::models::{DailyResult, GameRecord, GuessRecord, LeaderboardEntry, PlayerRecord};
+use super::models::{
+    DailyResult, GamePlayerRecord, GameRecord, GuessRecord, LeaderboardEntry, PlayerRecord,
+};
 use super::repository::{GameRepository, RepositoryError};
 use rusqlite::{Connection, OptionalExtension, params};
 use std::sync::{Arc, Mutex};
@@ -34,6 +36,7 @@ impl SqliteRepository {
         let migrations: &[(i64, &str)] = &[
             (1, include_str!("migrations/001_initial.sql")),
             (2, include_str!("migrations/002_indexer.sql")),
+            (3, include_str!("migrations/003_pvp.sql")),
         ];
 
         for &(version, sql) in migrations {
@@ -68,8 +71,12 @@ impl GameRepository for SqliteRepository {
         tokio::task::spawn_blocking(move || {
             let conn = conn.lock().unwrap();
             conn.execute(
-                "INSERT INTO games (id, game_type, word_index, salt, commitment, status) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                params![game.id, game.game_type, game.word_index, game.salt, game.commitment, game.status],
+                "INSERT INTO games (id, game_type, word_index, salt, commitment, status, capacity, token, amount, timeout_secs)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                params![
+                    game.id, game.game_type, game.word_index, game.salt, game.commitment, game.status,
+                    game.capacity, game.token, game.amount, game.timeout_secs,
+                ],
             )
             .map_err(|e| {
                 if let rusqlite::Error::SqliteFailure(err, _) = &e {
@@ -91,7 +98,11 @@ impl GameRepository for SqliteRepository {
         tokio::task::spawn_blocking(move || {
             let conn = conn.lock().unwrap();
             let mut stmt = conn
-                .prepare("SELECT id, game_type, word_index, salt, commitment, status, created_at FROM games WHERE id = ?1")
+                .prepare(
+                    "SELECT id, game_type, word_index, salt, commitment, status, created_at,
+                            capacity, token, amount, timeout_secs
+                     FROM games WHERE id = ?1",
+                )
                 .map_err(|e| RepositoryError::Internal(e.to_string()))?;
 
             let result = stmt
@@ -104,6 +115,10 @@ impl GameRepository for SqliteRepository {
                         commitment: row.get(4)?,
                         status: row.get(5)?,
                         created_at: row.get(6)?,
+                        capacity: row.get::<_, Option<i64>>(7)?.map(|v| v as u32),
+                        token: row.get(8)?,
+                        amount: row.get(9)?,
+                        timeout_secs: row.get::<_, Option<i64>>(10)?.map(|v| v as u32),
                     })
                 })
                 .optional()
@@ -349,6 +364,141 @@ impl GameRepository for SqliteRepository {
         .await
         .map_err(|e| RepositoryError::Internal(e.to_string()))?
     }
+
+    async fn add_game_player(
+        &self,
+        game_id: &str,
+        player_id: i64,
+        address: &str,
+    ) -> Result<(), RepositoryError> {
+        let conn = self.conn.clone();
+        let game_id = game_id.to_string();
+        let address = address.to_string();
+        tokio::task::spawn_blocking(move || {
+            let conn = conn.lock().unwrap();
+            conn.execute(
+                "INSERT OR IGNORE INTO game_players (game_id, player_id, address) VALUES (?1, ?2, ?3)",
+                params![game_id, player_id, address],
+            )
+            .map_err(|e| RepositoryError::Internal(e.to_string()))?;
+            Ok(())
+        })
+        .await
+        .map_err(|e| RepositoryError::Internal(e.to_string()))?
+    }
+
+    async fn get_game_players(
+        &self,
+        game_id: &str,
+    ) -> Result<Vec<GamePlayerRecord>, RepositoryError> {
+        let conn = self.conn.clone();
+        let game_id = game_id.to_string();
+        tokio::task::spawn_blocking(move || {
+            let conn = conn.lock().unwrap();
+            let mut stmt = conn
+                .prepare(
+                    "SELECT game_id, player_id, address, started_at, finished_at, solved, guess_count
+                     FROM game_players WHERE game_id = ?1",
+                )
+                .map_err(|e| RepositoryError::Internal(e.to_string()))?;
+
+            let rows = stmt
+                .query_map(params![game_id], |row| {
+                    Ok(GamePlayerRecord {
+                        game_id: row.get(0)?,
+                        player_id: row.get(1)?,
+                        address: row.get(2)?,
+                        started_at: row.get(3)?,
+                        finished_at: row.get(4)?,
+                        solved: row.get::<_, i32>(5)? != 0,
+                        guess_count: row.get(6)?,
+                    })
+                })
+                .map_err(|e| RepositoryError::Internal(e.to_string()))?;
+
+            rows.collect::<Result<Vec<_>, _>>()
+                .map_err(|e| RepositoryError::Internal(e.to_string()))
+        })
+        .await
+        .map_err(|e| RepositoryError::Internal(e.to_string()))?
+    }
+
+    async fn update_game_player_started(
+        &self,
+        game_id: &str,
+        player_id: i64,
+    ) -> Result<(), RepositoryError> {
+        let conn = self.conn.clone();
+        let game_id = game_id.to_string();
+        tokio::task::spawn_blocking(move || {
+            let conn = conn.lock().unwrap();
+            conn.execute(
+                "UPDATE game_players SET started_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+                 WHERE game_id = ?1 AND player_id = ?2 AND started_at IS NULL",
+                params![game_id, player_id],
+            )
+            .map_err(|e| RepositoryError::Internal(e.to_string()))?;
+            Ok(())
+        })
+        .await
+        .map_err(|e| RepositoryError::Internal(e.to_string()))?
+    }
+
+    async fn update_game_player_finished(
+        &self,
+        game_id: &str,
+        player_id: i64,
+        solved: bool,
+        guess_count: u32,
+    ) -> Result<(), RepositoryError> {
+        let conn = self.conn.clone();
+        let game_id = game_id.to_string();
+        tokio::task::spawn_blocking(move || {
+            let conn = conn.lock().unwrap();
+            conn.execute(
+                "UPDATE game_players
+                 SET finished_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                     solved = ?3, guess_count = ?4
+                 WHERE game_id = ?1 AND player_id = ?2",
+                params![game_id, player_id, solved as i32, guess_count],
+            )
+            .map_err(|e| RepositoryError::Internal(e.to_string()))?;
+            Ok(())
+        })
+        .await
+        .map_err(|e| RepositoryError::Internal(e.to_string()))?
+    }
+
+    async fn update_game_pvp_fields(
+        &self,
+        game_id: &str,
+        word_index: usize,
+        salt: &str,
+        commitment: &str,
+        status: &str,
+    ) -> Result<(), RepositoryError> {
+        let conn = self.conn.clone();
+        let game_id = game_id.to_string();
+        let salt = salt.to_string();
+        let commitment = commitment.to_string();
+        let status = status.to_string();
+        tokio::task::spawn_blocking(move || {
+            let conn = conn.lock().unwrap();
+            let rows = conn
+                .execute(
+                    "UPDATE games SET word_index = ?2, salt = ?3, commitment = ?4, status = ?5
+                     WHERE id = ?1",
+                    params![game_id, word_index, salt, commitment, status],
+                )
+                .map_err(|e| RepositoryError::Internal(e.to_string()))?;
+            if rows == 0 {
+                return Err(RepositoryError::NotFound);
+            }
+            Ok(())
+        })
+        .await
+        .map_err(|e| RepositoryError::Internal(e.to_string()))?
+    }
 }
 
 #[cfg(test)]
@@ -359,18 +509,42 @@ mod tests {
         SqliteRepository::new(":memory:").unwrap()
     }
 
-    #[tokio::test]
-    async fn create_and_get_game() {
-        let repo = test_repo();
-        let game = GameRecord {
-            id: "42".into(),
+    fn daily_game(id: &str, word_index: usize) -> GameRecord {
+        GameRecord {
+            id: id.into(),
             game_type: "daily".into(),
-            word_index: 100,
+            word_index,
             salt: None,
             commitment: None,
             status: "active".into(),
             created_at: String::new(),
-        };
+            capacity: None,
+            token: None,
+            amount: None,
+            timeout_secs: None,
+        }
+    }
+
+    fn pvp_game(id: &str) -> GameRecord {
+        GameRecord {
+            id: id.into(),
+            game_type: "pvp".into(),
+            word_index: 0,
+            salt: None,
+            commitment: None,
+            status: "waiting".into(),
+            created_at: String::new(),
+            capacity: Some(2),
+            token: Some("0xtoken".into()),
+            amount: Some("10000000000000000000".into()),
+            timeout_secs: Some(10800),
+        }
+    }
+
+    #[tokio::test]
+    async fn create_and_get_game() {
+        let repo = test_repo();
+        let game = daily_game("42", 100);
         repo.create_game(&game).await.unwrap();
 
         let fetched = repo.get_game("42").await.unwrap().unwrap();
@@ -382,15 +556,7 @@ mod tests {
     #[tokio::test]
     async fn duplicate_game_returns_conflict() {
         let repo = test_repo();
-        let game = GameRecord {
-            id: "1".into(),
-            game_type: "daily".into(),
-            word_index: 0,
-            salt: None,
-            commitment: None,
-            status: "active".into(),
-            created_at: String::new(),
-        };
+        let game = daily_game("1", 0);
         repo.create_game(&game).await.unwrap();
         let err = repo.create_game(&game).await.unwrap_err();
         assert!(matches!(err, RepositoryError::Conflict(_)));
@@ -407,15 +573,7 @@ mod tests {
     #[tokio::test]
     async fn record_and_retrieve_guesses() {
         let repo = test_repo();
-        let game = GameRecord {
-            id: "10".into(),
-            game_type: "daily".into(),
-            word_index: 50,
-            salt: None,
-            commitment: None,
-            status: "active".into(),
-            created_at: String::new(),
-        };
+        let game = daily_game("10", 50);
         repo.create_game(&game).await.unwrap();
         let player = repo.get_or_create_player("0xdef").await.unwrap();
 
@@ -442,19 +600,92 @@ mod tests {
     #[tokio::test]
     async fn update_game_status() {
         let repo = test_repo();
-        let game = GameRecord {
-            id: "5".into(),
-            game_type: "daily".into(),
-            word_index: 25,
-            salt: None,
-            commitment: None,
-            status: "active".into(),
-            created_at: String::new(),
-        };
+        let game = daily_game("5", 25);
         repo.create_game(&game).await.unwrap();
         repo.update_game_status("5", "completed").await.unwrap();
 
         let fetched = repo.get_game("5").await.unwrap().unwrap();
         assert_eq!(fetched.status, "completed");
+    }
+
+    #[tokio::test]
+    async fn pvp_game_with_players() {
+        let repo = test_repo();
+        let game = pvp_game("0xgame1");
+        repo.create_game(&game).await.unwrap();
+
+        let p1 = repo.get_or_create_player("0xplayer1").await.unwrap();
+        let p2 = repo.get_or_create_player("0xplayer2").await.unwrap();
+
+        repo.add_game_player("0xgame1", p1.id, "0xplayer1")
+            .await
+            .unwrap();
+        repo.add_game_player("0xgame1", p2.id, "0xplayer2")
+            .await
+            .unwrap();
+
+        let players = repo.get_game_players("0xgame1").await.unwrap();
+        assert_eq!(players.len(), 2);
+        assert!(players[0].started_at.is_none());
+    }
+
+    #[tokio::test]
+    async fn pvp_player_lifecycle() {
+        let repo = test_repo();
+        let game = pvp_game("0xgame2");
+        repo.create_game(&game).await.unwrap();
+
+        let p = repo.get_or_create_player("0xplayer1").await.unwrap();
+        repo.add_game_player("0xgame2", p.id, "0xplayer1")
+            .await
+            .unwrap();
+
+        repo.update_game_player_started("0xgame2", p.id)
+            .await
+            .unwrap();
+        let players = repo.get_game_players("0xgame2").await.unwrap();
+        assert!(players[0].started_at.is_some());
+
+        repo.update_game_player_finished("0xgame2", p.id, true, 4)
+            .await
+            .unwrap();
+        let players = repo.get_game_players("0xgame2").await.unwrap();
+        assert!(players[0].finished_at.is_some());
+        assert!(players[0].solved);
+        assert_eq!(players[0].guess_count, 4);
+    }
+
+    #[tokio::test]
+    async fn update_game_pvp_fields() {
+        let repo = test_repo();
+        let game = pvp_game("0xgame3");
+        repo.create_game(&game).await.unwrap();
+
+        repo.update_game_pvp_fields("0xgame3", 42, "aabb", "ccdd", "active")
+            .await
+            .unwrap();
+        let fetched = repo.get_game("0xgame3").await.unwrap().unwrap();
+        assert_eq!(fetched.word_index, 42);
+        assert_eq!(fetched.salt.as_deref(), Some("aabb"));
+        assert_eq!(fetched.commitment.as_deref(), Some("ccdd"));
+        assert_eq!(fetched.status, "active");
+    }
+
+    #[tokio::test]
+    async fn add_game_player_idempotent() {
+        let repo = test_repo();
+        let game = pvp_game("0xgame4");
+        repo.create_game(&game).await.unwrap();
+        let p = repo.get_or_create_player("0xplayer1").await.unwrap();
+
+        repo.add_game_player("0xgame4", p.id, "0xplayer1")
+            .await
+            .unwrap();
+        repo.add_game_player("0xgame4", p.id, "0xplayer1")
+            .await
+            .unwrap();
+
+        let players = repo.get_game_players("0xgame4").await.unwrap();
+        assert_eq!(players.len(), 1);
     }
 }

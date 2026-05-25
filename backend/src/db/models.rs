@@ -10,6 +10,25 @@ pub struct GameRecord {
     pub commitment: Option<String>,
     pub status: String,
     pub created_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub capacity: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub token: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub amount: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timeout_secs: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct GamePlayerRecord {
+    pub game_id: String,
+    pub player_id: i64,
+    pub address: String,
+    pub started_at: Option<String>,
+    pub finished_at: Option<String>,
+    pub solved: bool,
+    pub guess_count: u32,
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]

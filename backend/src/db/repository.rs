@@ -1,4 +1,6 @@
-use super::models::{DailyResult, GameRecord, GuessRecord, LeaderboardEntry, PlayerRecord};
+use super::models::{
+    DailyResult, GamePlayerRecord, GameRecord, GuessRecord, LeaderboardEntry, PlayerRecord,
+};
 use std::fmt;
 use std::future::Future;
 
@@ -76,5 +78,40 @@ pub trait GameRepository: Send + Sync + 'static {
     fn set_indexer_cursor(
         &self,
         block_number: u64,
+    ) -> impl Future<Output = Result<(), RepositoryError>> + Send;
+
+    fn add_game_player(
+        &self,
+        game_id: &str,
+        player_id: i64,
+        address: &str,
+    ) -> impl Future<Output = Result<(), RepositoryError>> + Send;
+
+    fn get_game_players(
+        &self,
+        game_id: &str,
+    ) -> impl Future<Output = Result<Vec<GamePlayerRecord>, RepositoryError>> + Send;
+
+    fn update_game_player_started(
+        &self,
+        game_id: &str,
+        player_id: i64,
+    ) -> impl Future<Output = Result<(), RepositoryError>> + Send;
+
+    fn update_game_player_finished(
+        &self,
+        game_id: &str,
+        player_id: i64,
+        solved: bool,
+        guess_count: u32,
+    ) -> impl Future<Output = Result<(), RepositoryError>> + Send;
+
+    fn update_game_pvp_fields(
+        &self,
+        game_id: &str,
+        word_index: usize,
+        salt: &str,
+        commitment: &str,
+        status: &str,
     ) -> impl Future<Output = Result<(), RepositoryError>> + Send;
 }

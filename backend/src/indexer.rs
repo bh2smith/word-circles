@@ -11,6 +11,7 @@ pub struct IndexerConfig {
     pub poll_interval: Duration,
     pub resolver: Option<Arc<ResolverClient>>,
     pub pvp_enabled: bool,
+    pub pvp_timeout_secs: u32,
 }
 
 /// Polls arak's event tables for new on-chain events and reacts to them.
@@ -43,9 +44,32 @@ pub async fn run<R: GameRepository>(repo: Arc<R>, config: IndexerConfig) {
                     block_number,
                     player,
                     capacity,
-                    ..
+                    token,
+                    amount,
                 } => {
                     tracing::info!(game_id, block_number, player, capacity, "Created");
+                    if config.pvp_enabled {
+                        let cap: u32 = capacity.parse().unwrap_or(2);
+                        let record = GameRecord {
+                            id: game_id.clone(),
+                            game_type: "pvp".into(),
+                            word_index: 0,
+                            salt: None,
+                            commitment: None,
+                            status: "waiting".into(),
+                            created_at: String::new(),
+                            capacity: Some(cap),
+                            token: Some(token.clone()),
+                            amount: Some(amount.clone()),
+                            timeout_secs: Some(config.pvp_timeout_secs),
+                        };
+                        if let Err(e) = repo.create_game(&record).await {
+                            match e {
+                                RepositoryError::Conflict(_) => {}
+                                _ => tracing::error!(game_id, "Failed to create PvP game: {e}"),
+                            }
+                        }
+                    }
                 }
                 ArakEvent::Joined {
                     game_id,
@@ -55,6 +79,11 @@ pub async fn run<R: GameRepository>(repo: Arc<R>, config: IndexerConfig) {
                     capacity,
                 } => {
                     tracing::info!(game_id, block_number, player, players, "Joined");
+                    if config.pvp_enabled {
+                        if let Ok(p) = repo.get_or_create_player(player).await {
+                            let _ = repo.add_game_player(game_id, p.id, player).await;
+                        }
+                    }
                     if players == capacity && config.pvp_enabled {
                         let repo = Arc::clone(&repo);
                         let game_id = game_id.clone();
@@ -107,6 +136,8 @@ enum ArakEvent {
         block_number: u64,
         player: String,
         capacity: String,
+        token: String,
+        amount: String,
     },
     Joined {
         game_id: String,
@@ -148,7 +179,7 @@ fn read_new_events(arak_db_path: &str, cursor: u64) -> Result<Vec<ArakEvent>, ru
     let mut events: Vec<ArakEvent> = Vec::new();
 
     if let Ok(mut stmt) = conn.prepare(
-        "SELECT block_number, gameId, player, capacity
+        "SELECT block_number, gameId, player, capacity, token, amount
          FROM created WHERE block_number > ?1 ORDER BY block_number, log_index",
     ) {
         let rows = stmt.query_map([cursor], |row| {
@@ -157,6 +188,8 @@ fn read_new_events(arak_db_path: &str, cursor: u64) -> Result<Vec<ArakEvent>, ru
                 game_id: row.get(1)?,
                 player: row.get(2)?,
                 capacity: row.get(3)?,
+                token: row.get(4)?,
+                amount: row.get(5)?,
             })
         })?;
         for row in rows {
@@ -239,6 +272,10 @@ async fn backfill_game_result<R: GameRepository>(
             commitment: None,
             status: "active".into(),
             created_at: String::new(),
+            capacity: None,
+            token: None,
+            amount: None,
+            timeout_secs: None,
         };
         let _ = repo.create_game(&record).await;
     }
@@ -269,6 +306,17 @@ async fn backfill_game_result<R: GameRepository>(
     }
 }
 
+fn parse_game_id_bytes(game_id: &str) -> [u8; 32] {
+    let stripped = game_id.trim_start_matches("0x");
+    let mut buf = [0u8; 32];
+    if let Ok(decoded) = hex::decode(stripped) {
+        if decoded.len() == 32 {
+            buf.copy_from_slice(&decoded);
+        }
+    }
+    buf
+}
+
 async fn prepare_pvp_game<R: GameRepository>(
     repo: Arc<R>,
     game_id: &str,
@@ -276,31 +324,19 @@ async fn prepare_pvp_game<R: GameRepository>(
 ) {
     let word_index = game::random_word_index();
     let salt = game::generate_salt();
-
-    let game_id_bytes = {
-        let stripped = game_id.trim_start_matches("0x");
-        let mut buf = [0u8; 32];
-        if let Ok(decoded) = hex::decode(stripped) {
-            if decoded.len() == 32 {
-                buf.copy_from_slice(&decoded);
-            }
-        }
-        buf
-    };
-
+    let game_id_bytes = parse_game_id_bytes(game_id);
     let commitment = game::compute_pvp_commitment(&game_id_bytes, word_index, &salt);
 
-    let record = GameRecord {
-        id: game_id.to_string(),
-        game_type: "pvp".into(),
-        word_index,
-        salt: Some(hex::encode(salt)),
-        commitment: Some(hex::encode(commitment)),
-        status: "active".into(),
-        created_at: String::new(),
-    };
-
-    match repo.create_game(&record).await {
+    match repo
+        .update_game_pvp_fields(
+            game_id,
+            word_index,
+            &hex::encode(salt),
+            &hex::encode(commitment),
+            "active",
+        )
+        .await
+    {
         Ok(()) => {
             tracing::info!(
                 game_id,

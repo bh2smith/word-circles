@@ -140,7 +140,7 @@ export default function Game() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           guess: currentGuess,
-          gameId,
+          gameId: String(gameId),
           guessNumber: guesses.length,
           player: getConnectedAddress() ?? undefined,
         }),
