@@ -73,6 +73,9 @@ export default function Game() {
     getConnectedAddress(),
   );
   const [alreadyPlayed, setAlreadyPlayed] = useState<boolean | null>(null);
+  const [recordState, setRecordState] = useState<
+    "idle" | "recording" | "recorded" | "error"
+  >("idle");
 
   // Load game state, fetch current game ID, and subscribe to wallet
   useEffect(() => {
@@ -113,18 +116,25 @@ export default function Game() {
       .catch(() => setAlreadyPlayed(false));
   }, [walletAddress, gameId]);
 
-  const recordOnChain = useCallback(
-    async (gId: number, won: boolean, numGuesses: number) => {
-      if (!isMiniappMode()) return;
-      try {
-        const calldata = encodeRecordGame(gId, won, numGuesses);
-        await submitGameResult(STATS_CONTRACT, calldata);
-      } catch (err) {
-        console.error("On-chain recording failed:", err);
-      }
-    },
-    [],
-  );
+  // Submit the finished game to the on-chain leaderboard. Triggered by the
+  // user via the "Record Score" button rather than automatically, so the
+  // wallet transaction prompt doesn't surprise them.
+  const handleRecordScore = useCallback(async () => {
+    if (gameId === null || status === "playing") return;
+    setRecordState("recording");
+    try {
+      const calldata = encodeRecordGame(
+        gameId,
+        status === "won",
+        guesses.length,
+      );
+      await submitGameResult(STATS_CONTRACT, calldata);
+      setRecordState("recorded");
+    } catch (err) {
+      console.error("On-chain recording failed:", err);
+      setRecordState("error");
+    }
+  }, [gameId, status, guesses.length]);
 
   const updateStats = useCallback((won: boolean, numGuesses: number) => {
     setStats((prev) => {
@@ -193,12 +203,10 @@ export default function Game() {
         newAnswer = data.answer;
         setToast("Brilliant!");
         updateStats(true, newGuesses.length);
-        recordOnChain(gameId, true, newGuesses.length);
       } else if (data.gameOver) {
         newStatus = "lost";
         newAnswer = data.answer;
         updateStats(false, newGuesses.length);
-        recordOnChain(gameId, false, newGuesses.length);
       }
 
       setStatus(newStatus);
@@ -216,15 +224,7 @@ export default function Game() {
     } finally {
       setSubmitting(false);
     }
-  }, [
-    currentGuess,
-    gameId,
-    guesses,
-    status,
-    submitting,
-    updateStats,
-    recordOnChain,
-  ]);
+  }, [currentGuess, gameId, guesses, status, submitting, updateStats]);
 
   const onKey = useCallback(
     (key: string) => {
@@ -411,6 +411,11 @@ export default function Game() {
         gameOver={status !== "playing"}
         won={status === "won"}
         answer={answer}
+        canRecord={isMiniappMode()}
+        recordState={
+          recordState === "idle" && alreadyPlayed ? "recorded" : recordState
+        }
+        onRecordScore={handleRecordScore}
       />
 
       {/* Leaderboard Modal */}

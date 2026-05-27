@@ -16,6 +16,8 @@ export const EMPTY_STATS: Stats = {
   guessDistribution: [0, 0, 0, 0, 0, 0],
 };
 
+export type RecordState = "idle" | "recording" | "recorded" | "error";
+
 interface StatsModalProps {
   stats: Stats;
   open: boolean;
@@ -23,6 +25,10 @@ interface StatsModalProps {
   gameOver?: boolean;
   won?: boolean;
   answer?: string;
+  /** Whether on-chain recording is available (i.e. running in the miniapp). */
+  canRecord?: boolean;
+  recordState?: RecordState;
+  onRecordScore?: () => void;
 }
 
 export default function StatsModal({
@@ -32,8 +38,13 @@ export default function StatsModal({
   gameOver,
   won,
   answer,
+  canRecord,
+  recordState = "idle",
+  onRecordScore,
 }: StatsModalProps) {
   if (!open) return null;
+
+  const showRecord = gameOver && canRecord;
 
   const winPct =
     stats.gamesPlayed > 0
@@ -107,9 +118,33 @@ export default function StatsModal({
           ))}
         </div>
 
+        {showRecord && (
+          <button
+            onClick={onRecordScore}
+            disabled={recordState === "recording" || recordState === "recorded"}
+            className={`mt-6 w-full py-2 rounded font-bold transition-colors disabled:cursor-not-allowed ${
+              recordState === "recorded"
+                ? "bg-neutral-700 text-neutral-300"
+                : "bg-green-600 hover:bg-green-700 disabled:opacity-60"
+            }`}
+          >
+            {recordState === "recording"
+              ? "Recording…"
+              : recordState === "recorded"
+                ? "Score Recorded ✓"
+                : recordState === "error"
+                  ? "Recording failed — Retry"
+                  : "Record Score"}
+          </button>
+        )}
+
         <button
           onClick={onClose}
-          className="mt-6 w-full py-2 bg-green-600 rounded font-bold hover:bg-green-700 transition-colors"
+          className={`w-full py-2 rounded font-bold transition-colors ${
+            showRecord
+              ? "mt-2 bg-neutral-700 hover:bg-neutral-600"
+              : "mt-6 bg-green-600 hover:bg-green-700"
+          }`}
         >
           Close
         </button>
