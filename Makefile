@@ -22,7 +22,7 @@ DEPLOYER_ADDRESS := $(shell cast wallet address --account $(DEPLOYER_ACCOUNT) 2>
 RESOLVER_ADDRESS := $(shell cast wallet address --account $(RESOLVER_ACCOUNT) 2>/dev/null)
 VERIFY_FLAG      := $(if $(GNOSISSCAN_API_KEY),--verify,)
 
-.PHONY: deploy verify-all openapi
+.PHONY: deploy deploy-escrow verify-all openapi
 
 # Refresh the committed OpenAPI snapshot from the backend, then regenerate the
 # frontend TypeScript types. Run after changing any API handler or schema.
@@ -35,6 +35,16 @@ deploy:
 	@echo "Resolver:  $(RESOLVER_ADDRESS)"
 	DEPLOYER_ADDRESS=$(DEPLOYER_ADDRESS) RESOLVER_ADDRESS=$(RESOLVER_ADDRESS) \
 		forge script script/Deploy.s.sol:DeployScript \
+		--rpc-url $(RPC_URL) \
+		--account $(DEPLOYER_ACCOUNT) \
+		--broadcast $(VERIFY_FLAG)
+
+# Redeploy ONLY the escrow (e.g. to fix the ERC20Lift). Leaves Stats/Commitment
+# untouched. Set ERC20_LIFT to override the default (live Hub lift).
+deploy-escrow:
+	@echo "Deployer:  $(DEPLOYER_ADDRESS)"
+	DEPLOYER_ADDRESS=$(DEPLOYER_ADDRESS) \
+		forge script script/DeployEscrow.s.sol:DeployEscrowScript \
 		--rpc-url $(RPC_URL) \
 		--account $(DEPLOYER_ACCOUNT) \
 		--broadcast $(VERIFY_FLAG)

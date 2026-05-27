@@ -19,7 +19,11 @@ contract DeployScript is Script {
     function run() external {
         address owner = vm.envAddress("DEPLOYER_ADDRESS");
         address resolver = vm.envAddress("RESOLVER_ADDRESS");
-        address erc20Lift = vm.envOr("ERC20_LIFT", address(0xDA02CDB5279B3a1eF27Be3d91aE924495E6A5569));
+        // ERC20Lift for the live Circles v2 Hub (0xc12C1E50ABB450d6205Ea2C3Fa861b3B834d13e8) on
+        // Gnosis mainnet — must match the Hub that stake tokens are wrapped through, or join()
+        // reverts InvalidToken. The previous default (0xDA02CDB5...) was bound to an old/other Hub
+        // (0x2200542D...) and rejected every current Circles token.
+        address erc20Lift = vm.envOr("ERC20_LIFT", address(0x5F99a795dD2743C36D63511f0D4bc667e6d3cDB5));
 
         vm.startBroadcast(owner);
 
