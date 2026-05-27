@@ -6,6 +6,7 @@ import Keyboard, { computeLetterStates } from "./Keyboard";
 import Toast from "./Toast";
 import HintPanel from "./HintPanel";
 import OpponentStatus from "./OpponentStatus";
+import PvpResults from "./PvpResults";
 import type { GuessResult, LetterResult } from "@/lib/game";
 import { WORD_LENGTH } from "@/lib/game";
 import {
@@ -18,6 +19,7 @@ import { encodeApprove, encodeJoin } from "@/lib/contract";
 import type {
   ContractConfig,
   PvpGameResponse,
+  PvpTranscript,
   GuessResponse,
   ErrorResponse,
 } from "@/lib/api";
@@ -64,6 +66,7 @@ export default function PvpGame() {
   const [phase, setPhase] = useState<Phase | null>(null); // null = idle/lobby
   const [gameId, setGameId] = useState<string | null>(null);
   const [game, setGame] = useState<PvpGameResponse | null>(null);
+  const [transcript, setTranscript] = useState<PvpTranscript | null>(null);
   const [guesses, setGuesses] = useState<GuessResult[]>([]);
   const [currentGuess, setCurrentGuess] = useState("");
   const [solved, setSolved] = useState(false);
@@ -215,6 +218,23 @@ export default function PvpGame() {
     };
   }, [gameId, phase]);
 
+  // Once the game has settled, fetch both players' transcripts for the
+  // head-to-head results screen.
+  useEffect(() => {
+    const settled = game?.status === "settled" || game?.status === "completed";
+    if (!gameId || !settled || transcript) return;
+    let active = true;
+    fetch(`/api/games/${gameId}/transcript`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((t: PvpTranscript | null) => {
+        if (active && t) setTranscript(t);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [gameId, game?.status, transcript]);
+
   const submitGuess = useCallback(async () => {
     if (
       phase !== "playing" ||
@@ -304,6 +324,7 @@ export default function PvpGame() {
     setPhase(null);
     setGameId(null);
     setGame(null);
+    setTranscript(null);
     setGuesses([]);
     setCurrentGuess("");
     setSolved(false);
@@ -441,10 +462,22 @@ export default function PvpGame() {
     );
   }
 
+  const settled = game?.status === "settled" || game?.status === "completed";
+
+  // Settled — show the head-to-head results once the transcript loads.
+  if (phase === "finished" && settled && transcript) {
+    return (
+      <PvpResults
+        transcript={transcript}
+        myAddress={walletAddress}
+        onPlayAgain={resetToLobby}
+      />
+    );
+  }
+
   // playing / finished — show the board.
   const letterStates = computeLetterStates(guesses);
   const answer = game?.answer;
-  const settled = game?.status === "settled" || game?.status === "completed";
   const opponent =
     game?.players.find(
       (p) => p.address.toLowerCase() !== walletAddress.toLowerCase(),

@@ -498,6 +498,30 @@ struct PvpGameResponse {
     answer: Option<String>,
 }
 
+#[derive(Serialize, ToSchema)]
+struct PvpTranscriptGuess {
+    word: String,
+    results: Vec<game::LetterResult>,
+}
+
+#[derive(Serialize, ToSchema)]
+struct PvpTranscriptPlayer {
+    address: String,
+    solved: bool,
+    #[serde(rename = "guessCount")]
+    guess_count: u32,
+    guesses: Vec<PvpTranscriptGuess>,
+}
+
+#[derive(Serialize, ToSchema)]
+struct PvpTranscript {
+    #[serde(rename = "gameId")]
+    game_id: String,
+    status: String,
+    answer: String,
+    players: Vec<PvpTranscriptPlayer>,
+}
+
 fn player_status(p: &GamePlayerRecord, timeout_secs: u32) -> String {
     if p.finished_at.is_some() {
         "finished".into()
@@ -556,6 +580,78 @@ async fn build_pvp_response<R: GameRepository>(
         timeout_secs,
         answer,
     }
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/games/{game_id}/transcript",
+    params(("game_id" = String, Path, description = "PvP game ID")),
+    responses(
+        (status = 200, description = "Both players' guess transcripts", body = PvpTranscript),
+        (status = 404, description = "Game not found", body = ErrorResponse),
+        (status = 409, description = "Game not settled yet", body = ErrorResponse),
+        (status = 500, description = "Internal error", body = ErrorResponse),
+    )
+)]
+async fn get_pvp_transcript<R: GameRepository>(
+    State(state): State<Arc<AppState<R>>>,
+    Path(game_id): Path<String>,
+) -> impl IntoResponse {
+    debug!(%game_id, "GET /api/games/:id/transcript");
+
+    let game = match state.repo.get_game(&game_id).await {
+        Ok(Some(g)) => g,
+        Ok(None) => return err_response(StatusCode::NOT_FOUND, "Game not found"),
+        Err(e) => {
+            error!("Failed to fetch game {game_id}: {e}");
+            return err_response(StatusCode::INTERNAL_SERVER_ERROR, "Failed to fetch game");
+        }
+    };
+
+    // Transcripts only after settlement — never leak a live opponent's guesses.
+    if game.status != "settled" && game.status != "completed" {
+        return err_response(StatusCode::CONFLICT, "Results available after settlement");
+    }
+
+    let players = state
+        .repo
+        .get_game_players(&game_id)
+        .await
+        .unwrap_or_default();
+
+    let mut transcript_players = Vec::with_capacity(players.len());
+    for p in &players {
+        let guesses = state
+            .repo
+            .get_guesses(&game_id, p.player_id)
+            .await
+            .unwrap_or_default();
+        let parsed = guesses
+            .into_iter()
+            .map(|g| PvpTranscriptGuess {
+                word: g.word,
+                results: serde_json::from_str(&g.results).unwrap_or_default(),
+            })
+            .collect();
+        transcript_players.push(PvpTranscriptPlayer {
+            address: p.address.clone(),
+            solved: p.solved,
+            guess_count: p.guess_count,
+            guesses: parsed,
+        });
+    }
+
+    let transcript = PvpTranscript {
+        game_id: game.id,
+        status: game.status,
+        answer: game::get_answer_by_index(game.word_index).to_string(),
+        players: transcript_players,
+    };
+
+    (
+        StatusCode::OK,
+        Json(serde_json::to_value(transcript).unwrap()),
+    )
 }
 
 #[utoipa::path(
@@ -689,6 +785,7 @@ async fn get_config<R: GameRepository>(State(state): State<Arc<AppState<R>>>) ->
         get_daily_leaderboard,
         get_pvp_game,
         get_player_games,
+        get_pvp_transcript,
     ),
     components(schemas(
         GameResponse,
@@ -701,6 +798,9 @@ async fn get_config<R: GameRepository>(State(state): State<Arc<AppState<R>>>) ->
         DailyResult,
         PvpGameResponse,
         PvpPlayerStatus,
+        PvpTranscript,
+        PvpTranscriptPlayer,
+        PvpTranscriptGuess,
     ))
 )]
 pub struct ApiDoc;
@@ -721,6 +821,10 @@ pub fn build_router<R: GameRepository>(
         .route("/api/game", get(get_game::<R>))
         .route("/api/games", get(get_player_games::<R>))
         .route("/api/games/{game_id}", get(get_pvp_game::<R>))
+        .route(
+            "/api/games/{game_id}/transcript",
+            get(get_pvp_transcript::<R>),
+        )
         .route("/api/guess", post(post_guess::<R>))
         .route("/api/leaderboard", get(get_leaderboard::<R>))
         .route("/api/leaderboard/daily", get(get_daily_leaderboard::<R>))

@@ -18,3 +18,6 @@ export type DailyResult = Schemas["DailyResult"];
 export type ContractConfig = Schemas["ContractConfig"];
 export type PvpGameResponse = Schemas["PvpGameResponse"];
 export type PvpPlayerStatus = Schemas["PvpPlayerStatus"];
+export type PvpTranscript = Schemas["PvpTranscript"];
+export type PvpTranscriptPlayer = Schemas["PvpTranscriptPlayer"];
+export type PvpTranscriptGuess = Schemas["PvpTranscriptGuess"];

@@ -175,6 +175,65 @@
         }
       }
     },
+    "/api/games/{game_id}/transcript": {
+      "get": {
+        "tags": [],
+        "operationId": "get_pvp_transcript",
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "description": "PvP game ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Both players' guess transcripts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PvpTranscript"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Game not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Game not settled yet",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/guess": {
       "post": {
         "tags": [],
@@ -605,6 +664,78 @@
           },
           "status": {
             "type": "string"
+          }
+        }
+      },
+      "PvpTranscript": {
+        "type": "object",
+        "required": [
+          "gameId",
+          "status",
+          "answer",
+          "players"
+        ],
+        "properties": {
+          "answer": {
+            "type": "string"
+          },
+          "gameId": {
+            "type": "string"
+          },
+          "players": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PvpTranscriptPlayer"
+            }
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      },
+      "PvpTranscriptGuess": {
+        "type": "object",
+        "required": [
+          "word",
+          "results"
+        ],
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LetterResult"
+            }
+          },
+          "word": {
+            "type": "string"
+          }
+        }
+      },
+      "PvpTranscriptPlayer": {
+        "type": "object",
+        "required": [
+          "address",
+          "solved",
+          "guessCount",
+          "guesses"
+        ],
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "guessCount": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "guesses": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PvpTranscriptGuess"
+            }
+          },
+          "solved": {
+            "type": "boolean"
           }
         }
       }

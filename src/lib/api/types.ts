@@ -68,6 +68,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/games/{game_id}/transcript": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_pvp_transcript"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/guess": {
         parameters: {
             query?: never;
@@ -212,6 +228,23 @@ export interface components {
             guessCount: number;
             status: string;
         };
+        PvpTranscript: {
+            answer: string;
+            gameId: string;
+            players: components["schemas"]["PvpTranscriptPlayer"][];
+            status: string;
+        };
+        PvpTranscriptGuess: {
+            results: components["schemas"]["LetterResult"][];
+            word: string;
+        };
+        PvpTranscriptPlayer: {
+            address: string;
+            /** Format: int32 */
+            guessCount: number;
+            guesses: components["schemas"]["PvpTranscriptGuess"][];
+            solved: boolean;
+        };
     };
     responses: never;
     parameters: never;
@@ -345,6 +378,56 @@ export interface operations {
             };
             /** @description Game not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_pvp_transcript: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description PvP game ID */
+                game_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Both players' guess transcripts */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PvpTranscript"];
+                };
+            };
+            /** @description Game not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Game not settled yet */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
