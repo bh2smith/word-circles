@@ -121,10 +121,25 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         ContractConfig: {
+            /** @description Per-player stake (wei, as a decimal string) for `escrow.join`. */
+            amount?: string | null;
+            /**
+             * Format: int32
+             * @description Number of players per PvP game (the escrow lobby capacity).
+             */
+            capacity?: number | null;
             commitmentAddress: string;
+            escrowAddress?: string | null;
             pvpEnabled: boolean;
             resolver: string;
             statsAddress?: string | null;
+            /**
+             * Format: int32
+             * @description Per-player play window before a forced timeout, in seconds.
+             */
+            timeoutSecs?: number | null;
+            /** @description Circles token a player must stake to join a PvP game. */
+            token?: string | null;
         };
         DailyResult: {
             address: string;

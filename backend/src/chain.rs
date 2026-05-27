@@ -16,8 +16,22 @@ pub struct ContractConfig {
     pub commitment_address: String,
     #[serde(rename = "statsAddress", skip_serializing_if = "Option::is_none")]
     pub stats_address: Option<String>,
+    #[serde(rename = "escrowAddress", skip_serializing_if = "Option::is_none")]
+    pub escrow_address: Option<String>,
     #[serde(rename = "pvpEnabled")]
     pub pvp_enabled: bool,
+    /// Circles token a player must stake to join a PvP game.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub token: Option<String>,
+    /// Per-player stake (wei, as a decimal string) for `escrow.join`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub amount: Option<String>,
+    /// Number of players per PvP game (the escrow lobby capacity).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub capacity: Option<u32>,
+    /// Per-player play window before a forced timeout, in seconds.
+    #[serde(rename = "timeoutSecs", skip_serializing_if = "Option::is_none")]
+    pub timeout_secs: Option<u32>,
 }
 
 sol! {
@@ -74,6 +88,9 @@ pub struct ResolverClient {
     pub commitment_address: Address,
     pub escrow_address: Option<Address>,
     pub stats_address: Option<Address>,
+    pub token: Option<Address>,
+    pub amount: Option<U256>,
+    pub capacity: Option<u32>,
 }
 
 impl ResolverClient {
@@ -90,6 +107,13 @@ impl ResolverClient {
         let stats_address = std::env::var("STATS_ADDRESS")
             .ok()
             .and_then(|s| s.parse().ok());
+        let token = std::env::var("PVP_TOKEN").ok().and_then(|s| s.parse().ok());
+        let amount = std::env::var("PVP_AMOUNT")
+            .ok()
+            .and_then(|s| s.parse().ok());
+        let capacity = std::env::var("PVP_CAPACITY")
+            .ok()
+            .and_then(|s| s.parse().ok());
 
         let signer: PrivateKeySigner = key_hex
             .parse()
@@ -104,6 +128,9 @@ impl ResolverClient {
             commitment_address,
             escrow_address,
             stats_address,
+            token,
+            amount,
+            capacity,
         })
     }
 
@@ -111,12 +138,17 @@ impl ResolverClient {
         self.signer.address()
     }
 
-    pub fn config(&self, pvp_enabled: bool) -> ContractConfig {
+    pub fn config(&self, pvp_enabled: bool, timeout_secs: u32) -> ContractConfig {
         ContractConfig {
             resolver: self.signer.address().to_string(),
             commitment_address: self.commitment_address.to_string(),
             stats_address: self.stats_address.map(|a| a.to_string()),
+            escrow_address: self.escrow_address.map(|a| a.to_string()),
             pvp_enabled,
+            token: self.token.map(|a| a.to_string()),
+            amount: self.amount.map(|a| a.to_string()),
+            capacity: self.capacity,
+            timeout_secs: Some(timeout_secs),
         }
     }
 
@@ -241,6 +273,9 @@ mod tests {
             commitment_address: Address::ZERO,
             escrow_address: None,
             stats_address: None,
+            token: None,
+            amount: None,
+            capacity: None,
         }
     }
 

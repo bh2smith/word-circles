@@ -313,7 +313,12 @@ async fn config_with_resolver(pool: PgPool) {
         resolver: "0x1234567890abcdef1234567890abcdef12345678".into(),
         commitment_address: "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd".into(),
         stats_address: None,
+        escrow_address: None,
         pvp_enabled: false,
+        token: None,
+        amount: None,
+        capacity: None,
+        timeout_secs: Some(10800),
     };
     let app = build_router(repo, Some(config), None);
 
@@ -345,7 +350,12 @@ async fn config_with_pvp_enabled(pool: PgPool) {
         resolver: "0x1234567890abcdef1234567890abcdef12345678".into(),
         commitment_address: "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd".into(),
         stats_address: None,
+        escrow_address: None,
         pvp_enabled: true,
+        token: None,
+        amount: None,
+        capacity: None,
+        timeout_secs: Some(10800),
     };
     let app = build_router(repo, Some(config), None);
 

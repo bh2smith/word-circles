@@ -26,6 +26,43 @@ export function encodeRecordGame(
   });
 }
 
+// PvP matchmaking happens on-chain: a player approves the escrow for their
+// stake, then calls join() with the lobby parameters from /api/config. The
+// escrow pairs joiners into games and emits Created/Joined for the indexer.
+export const erc20Abi = parseAbi([
+  "function approve(address spender, uint256 amount) returns (bool)",
+]);
+
+export const escrowAbi = parseAbi([
+  "function join(address resolver, address token, uint256 amount, uint128 capacity) returns (bytes32)",
+]);
+
+export function encodeApprove(spender: string, amount: bigint): string {
+  return encodeFunctionData({
+    abi: erc20Abi,
+    functionName: "approve",
+    args: [spender as `0x${string}`, amount],
+  });
+}
+
+export function encodeJoin(
+  resolver: string,
+  token: string,
+  amount: bigint,
+  capacity: number,
+): string {
+  return encodeFunctionData({
+    abi: escrowAbi,
+    functionName: "join",
+    args: [
+      resolver as `0x${string}`,
+      token as `0x${string}`,
+      amount,
+      BigInt(capacity),
+    ],
+  });
+}
+
 export async function hasPlayerPlayed(
   player: string,
   gameId: number,

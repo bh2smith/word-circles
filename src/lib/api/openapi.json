@@ -287,8 +287,30 @@
           "pvpEnabled"
         ],
         "properties": {
+          "amount": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Per-player stake (wei, as a decimal string) for `escrow.join`."
+          },
+          "capacity": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Number of players per PvP game (the escrow lobby capacity).",
+            "minimum": 0
+          },
           "commitmentAddress": {
             "type": "string"
+          },
+          "escrowAddress": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "pvpEnabled": {
             "type": "boolean"
@@ -301,6 +323,22 @@
               "string",
               "null"
             ]
+          },
+          "timeoutSecs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Per-player play window before a forced timeout, in seconds.",
+            "minimum": 0
+          },
+          "token": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Circles token a player must stake to join a PvP game."
           }
         }
       },

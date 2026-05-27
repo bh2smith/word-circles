@@ -105,7 +105,9 @@ async fn main() {
         }
     }
 
-    let contract_config = resolver.as_ref().map(|r| r.config(pvp_enabled));
+    let contract_config = resolver
+        .as_ref()
+        .map(|r| r.config(pvp_enabled, pvp_timeout_secs));
     let app = build_router(repo, contract_config, resolver);
 
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();

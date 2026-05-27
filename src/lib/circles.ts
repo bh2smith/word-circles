@@ -50,6 +50,22 @@ export async function submitGameResult(
   ]);
 }
 
+// Enter PvP matchmaking: approve the escrow for the stake and call join() in a
+// single batched submission (join does safeTransferFrom, so approval must come
+// first). The escrow assigns the gameId on-chain; discover it afterwards via
+// GET /api/games?player=<address>.
+export async function joinPvpGame(
+  escrow: string,
+  token: string,
+  approveData: string,
+  joinData: string,
+) {
+  return sendTransactions([
+    { to: token, data: approveData, value: "0x0" },
+    { to: escrow, data: joinData, value: "0x0" },
+  ]);
+}
+
 export interface CirclesProfile {
   name: string;
   address: string;
