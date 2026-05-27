@@ -13,7 +13,7 @@ A daily Wordle-style word game with on-chain commitments and PvP escrow on Gnosi
 
 | Contract          | Address                                      | Gnosisscan                                                                       |
 | ----------------- | -------------------------------------------- | -------------------------------------------------------------------------------- |
-| WordCirclesEscrow | `0x310bAdE38C51019093776bf1Ba51DA23583794c2` | [View](https://gnosisscan.io/address/0x310bAdE38C51019093776bf1Ba51DA23583794c2) |
+| WordCirclesEscrow | `0x20a44c2C546FEBb4dcE773868B532D14663467A0` | [View](https://gnosisscan.io/address/0x20a44c2C546FEBb4dcE773868B532D14663467A0) |
 | WordCircleStats   | `0xB96413584d7a4e07cc8c238cC4baA3474C956CCF` | [View](https://gnosisscan.io/address/0xB96413584d7a4e07cc8c238cC4baA3474C956CCF) |
 | WordCommitment    | `0x6e99c40bd8b87290EB977336c4Be8b2106baB08f` | [View](https://gnosisscan.io/address/0x6e99c40bd8b87290EB977336c4Be8b2106baB08f) |
 

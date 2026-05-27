@@ -1,7 +1,7 @@
 {
   "name": "word-circles.public.dappnode.eth",
-  "version": "0.4.0",
-  "upstreamVersion": "0.4.0",
+  "version": "0.5.1",
+  "upstreamVersion": "0.5.1",
   "shortDescription": "Word Circles game backend",
   "description": "Rust/Axum backend for the Word Circles game. Handles daily game creation, guess evaluation, and persistence via PostgreSQL.",
   "type": "service",
@@ -80,6 +80,18 @@
         "default": "0xB96413584d7a4e07cc8c238cC4baA3474C956CCF"
       },
       {
+        "id": "escrow_address",
+        "target": {
+          "type": "environment",
+          "name": "ESCROW_ADDRESS",
+          "service": "api"
+        },
+        "title": "WordCirclesEscrow Contract Address",
+        "description": "Deployed WordCirclesEscrow contract address on Gnosis. Change here (a reconfigure, no republish) if the escrow is redeployed — but note the indexer's arak.toml still pins the address and is baked into the image.",
+        "required": false,
+        "default": "0x20a44c2C546FEBb4dcE773868B532D14663467A0"
+      },
+      {
         "id": "database_url",
         "target": {
           "type": "environment",
@@ -99,9 +111,79 @@
           "service": "api"
         },
         "title": "Enable PvP Mode",
-        "description": "Enable PvP matchmaking, escrow games, and related endpoints (requires resolver wallet)",
+        "description": "Enable PvP matchmaking, escrow games, and related endpoints (requires resolver wallet + the PvP token/amount below)",
         "required": false,
         "default": "false"
+      },
+      {
+        "id": "pvp_token",
+        "target": {
+          "type": "environment",
+          "name": "PVP_TOKEN",
+          "service": "api"
+        },
+        "title": "PvP Stake Token",
+        "description": "Address of the Circles ERC20 (inflation) token players stake to join a PvP game. Required when PvP is enabled.",
+        "required": false
+      },
+      {
+        "id": "pvp_amount",
+        "target": {
+          "type": "environment",
+          "name": "PVP_AMOUNT",
+          "service": "api"
+        },
+        "title": "PvP Stake Amount (wei)",
+        "description": "Per-player stake in wei (18 decimals). Default is 1 token (1e18).",
+        "required": false,
+        "default": "1000000000000000000"
+      },
+      {
+        "id": "pvp_capacity",
+        "target": {
+          "type": "environment",
+          "name": "PVP_CAPACITY",
+          "service": "api"
+        },
+        "title": "PvP Players Per Game",
+        "description": "Number of players per PvP game (escrow lobby capacity). Must be >= 2.",
+        "required": false,
+        "default": "2"
+      },
+      {
+        "id": "bot_enabled",
+        "target": {
+          "type": "environment",
+          "name": "BOT_ENABLED",
+          "service": "api"
+        },
+        "title": "Enable PvP Bot",
+        "description": "Run a matchmaking bot that fills lonely lobbies so a solo player can always find a match. Requires PvP enabled and the bot Safe below funded with the stake token.",
+        "required": false,
+        "default": "false"
+      },
+      {
+        "id": "bot_safe_address",
+        "target": {
+          "type": "environment",
+          "name": "BOT_SAFE_ADDRESS",
+          "service": "api"
+        },
+        "title": "Bot Circles Account (Safe)",
+        "description": "Address of the Circles account (Safe) the bot plays as. Must hold the PvP stake token. Required when the bot is enabled.",
+        "required": false
+      },
+      {
+        "id": "bot_private_key",
+        "target": {
+          "type": "environment",
+          "name": "BOT_PRIVATE_KEY",
+          "service": "api"
+        },
+        "title": "Bot Owner Private Key",
+        "description": "Hex-encoded private key of an owner/signer EOA of the bot's Safe. Required when the bot is enabled.",
+        "secret": true,
+        "required": false
       }
     ]
   }

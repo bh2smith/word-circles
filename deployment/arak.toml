@@ -9,20 +9,20 @@ poll-interval = 5
 
 [[event]]
 name = "created"
-start = 46322128
-contract = "0x310bAdE38C51019093776bf1Ba51DA23583794c2"
+start = 46395258
+contract = "0x20a44c2C546FEBb4dcE773868B532D14663467A0"
 signature = "event Created(bytes32 gameId, address player, address resolver, address token, uint256 amount, uint128 capacity)"
 
 [[event]]
 name = "joined"
-start = 46322128
-contract = "0x310bAdE38C51019093776bf1Ba51DA23583794c2"
+start = 46395258
+contract = "0x20a44c2C546FEBb4dcE773868B532D14663467A0"
 signature = "event Joined(bytes32 gameId, address creator, address player, uint128 players)"
 
 [[event]]
 name = "resolved"
-start = 46322128
-contract = "0x310bAdE38C51019093776bf1Ba51DA23583794c2"
+start = 46395258
+contract = "0x20a44c2C546FEBb4dcE773868B532D14663467A0"
 signature = "event Resolved(bytes32 gameId, address[] winners, uint256[] amounts)"
 
 [[event]]
