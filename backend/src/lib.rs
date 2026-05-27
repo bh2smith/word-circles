@@ -357,9 +357,32 @@ fn err_response(status: StatusCode, msg: &str) -> (StatusCode, Json<serde_json::
     )
 }
 
+/// Parses a timestamp from the several shapes the DB layer produces, notably
+/// Postgres `timestamptz::text` ("2026-05-27 12:34:56.789+00"). Returns the
+/// instant as naive UTC.
+fn parse_timestamp(s: &str) -> Option<chrono::NaiveDateTime> {
+    for fmt in ["%Y-%m-%d %H:%M:%S%.f%#z", "%Y-%m-%d %H:%M:%S%#z"] {
+        if let Ok(dt) = chrono::DateTime::parse_from_str(s, fmt) {
+            return Some(dt.naive_utc());
+        }
+    }
+    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
+        return Some(dt.naive_utc());
+    }
+    for fmt in [
+        "%Y-%m-%dT%H:%M:%SZ",
+        "%Y-%m-%d %H:%M:%S%.f",
+        "%Y-%m-%d %H:%M:%S",
+    ] {
+        if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(s, fmt) {
+            return Some(dt);
+        }
+    }
+    None
+}
+
 fn is_timed_out(started_at: &str, timeout_secs: u32) -> bool {
-    let Ok(started) = chrono::NaiveDateTime::parse_from_str(started_at, "%Y-%m-%dT%H:%M:%SZ")
-    else {
+    let Some(started) = parse_timestamp(started_at) else {
         return false;
     };
     let now = chrono::Utc::now().naive_utc();
@@ -475,11 +498,15 @@ struct PvpGameResponse {
     answer: Option<String>,
 }
 
-fn player_status(p: &GamePlayerRecord) -> String {
+fn player_status(p: &GamePlayerRecord, timeout_secs: u32) -> String {
     if p.finished_at.is_some() {
         "finished".into()
-    } else if p.started_at.is_some() {
-        "playing".into()
+    } else if let Some(started) = &p.started_at {
+        if is_timed_out(started, timeout_secs) {
+            "timed_out".into()
+        } else {
+            "playing".into()
+        }
     } else {
         "not_started".into()
     }
@@ -503,11 +530,13 @@ async fn build_pvp_response<R: GameRepository>(
         .await
         .unwrap_or_default();
 
+    let timeout_secs = game.timeout_secs.unwrap_or(10800);
+
     let player_statuses: Vec<PvpPlayerStatus> = players
         .iter()
         .map(|p| PvpPlayerStatus {
             address: p.address.clone(),
-            status: player_status(p),
+            status: player_status(p, timeout_secs),
             guess_count: p.guess_count,
         })
         .collect();
@@ -524,7 +553,7 @@ async fn build_pvp_response<R: GameRepository>(
         game_type: game.game_type,
         capacity: game.capacity.unwrap_or(2),
         players: player_statuses,
-        timeout_secs: game.timeout_secs.unwrap_or(10800),
+        timeout_secs,
         answer,
     }
 }
@@ -698,4 +727,32 @@ pub fn build_router<R: GameRepository>(
         .with_state(state)
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
         .layer(CorsLayer::permissive())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{is_timed_out, parse_timestamp};
+    use chrono::Utc;
+
+    #[test]
+    fn parses_postgres_timestamptz_text() {
+        // Postgres `timestamptz::text` — space separator, fractional, +00 offset.
+        assert!(parse_timestamp("2026-05-27 12:34:56.789123+00").is_some());
+        assert!(parse_timestamp("2026-05-27 12:34:56+00").is_some());
+        // RFC3339 / Z forms still parse.
+        assert!(parse_timestamp("2026-05-27T12:34:56Z").is_some());
+        assert!(parse_timestamp("not-a-timestamp").is_none());
+    }
+
+    #[test]
+    fn timeout_detected_for_old_postgres_timestamp() {
+        // An hour ago, in Postgres text form, against a 60s window.
+        let past = (Utc::now() - chrono::Duration::hours(1))
+            .format("%Y-%m-%d %H:%M:%S%.6f+00")
+            .to_string();
+        assert!(is_timed_out(&past, 60));
+
+        let now = Utc::now().format("%Y-%m-%d %H:%M:%S%.6f+00").to_string();
+        assert!(!is_timed_out(&now, 10_800));
+    }
 }

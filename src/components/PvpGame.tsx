@@ -5,6 +5,7 @@ import Board from "./Board";
 import Keyboard, { computeLetterStates } from "./Keyboard";
 import Toast from "./Toast";
 import HintPanel from "./HintPanel";
+import OpponentStatus from "./OpponentStatus";
 import type { GuessResult, LetterResult } from "@/lib/game";
 import { WORD_LENGTH } from "@/lib/game";
 import {
@@ -444,10 +445,16 @@ export default function PvpGame() {
   const letterStates = computeLetterStates(guesses);
   const answer = game?.answer;
   const settled = game?.status === "settled" || game?.status === "completed";
+  const opponent =
+    game?.players.find(
+      (p) => p.address.toLowerCase() !== walletAddress.toLowerCase(),
+    ) ?? null;
 
   return (
     <div className="relative flex flex-col items-center gap-4 sm:gap-6 w-full max-w-lg mx-auto px-2 text-white">
       {Header}
+
+      <OpponentStatus opponent={opponent} settled={settled} />
 
       {phase === "finished" && (
         <div className="text-center">
