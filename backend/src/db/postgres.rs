@@ -497,6 +497,52 @@ impl GameRepository for PostgresRepository {
             })
             .collect())
     }
+
+    async fn get_pvp_games_by_status(
+        &self,
+        status: &str,
+    ) -> Result<Vec<GameRecord>, RepositoryError> {
+        let rows: Vec<(
+            String,
+            String,
+            i32,
+            Option<String>,
+            Option<String>,
+            String,
+            String,
+            Option<i32>,
+            Option<String>,
+            Option<String>,
+            Option<i32>,
+        )> = sqlx::query_as(
+            "SELECT id, game_type, word_index, salt, commitment, status, created_at::text,
+                    capacity, token, amount, timeout_secs
+             FROM games
+             WHERE game_type = 'pvp' AND status = $1
+             ORDER BY created_at ASC",
+        )
+        .bind(status)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| RepositoryError::Internal(e.to_string()))?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| GameRecord {
+                id: r.0,
+                game_type: r.1,
+                word_index: r.2 as usize,
+                salt: r.3,
+                commitment: r.4,
+                status: r.5,
+                created_at: r.6,
+                capacity: r.7.map(|v| v as u32),
+                token: r.8,
+                amount: r.9,
+                timeout_secs: r.10.map(|v| v as u32),
+            })
+            .collect())
+    }
 }
 
 fn is_unique_violation(e: &sqlx::Error) -> bool {
@@ -759,5 +805,24 @@ mod tests {
             .await
             .unwrap();
         assert!(other.is_empty());
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn get_pvp_games_by_status_filters(pool: PgPool) {
+        let repo = PostgresRepository::from_pool(pool);
+        repo.create_game(&pvp_game("0xw1")).await.unwrap(); // waiting
+        repo.create_game(&pvp_game("0xw2")).await.unwrap(); // waiting
+        let mut active = pvp_game("0xa1");
+        active.status = "active".into();
+        repo.create_game(&active).await.unwrap();
+        repo.create_game(&daily_game("7", 0)).await.unwrap();
+
+        let waiting = repo.get_pvp_games_by_status("waiting").await.unwrap();
+        assert_eq!(waiting.len(), 2);
+        assert!(waiting.iter().all(|g| g.status == "waiting"));
+
+        let active = repo.get_pvp_games_by_status("active").await.unwrap();
+        assert_eq!(active.len(), 1);
+        assert_eq!(active[0].id, "0xa1");
     }
 }

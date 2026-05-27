@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 use tracing_subscriber::EnvFilter;
+use word_circles_backend::bot;
 use word_circles_backend::build_router;
 use word_circles_backend::chain::ResolverClient;
 use word_circles_backend::db::postgres::PostgresRepository;
@@ -102,6 +103,42 @@ async fn main() {
                 poll_secs = timeout_poll_secs,
                 "Settlement timeout loop enabled"
             );
+        }
+    }
+
+    let bot_enabled = std::env::var("BOT_ENABLED")
+        .map(|v| v == "true" || v == "1")
+        .unwrap_or(false);
+
+    if bot_enabled && pvp_enabled {
+        match resolver.as_ref() {
+            Some(resolver) => match bot::BotClient::from_env(resolver.address()).await {
+                Ok(client) => {
+                    let join_delay: u64 = std::env::var("BOT_JOIN_DELAY_SECS")
+                        .ok()
+                        .and_then(|s| s.parse().ok())
+                        .unwrap_or(60);
+                    let poll_secs: u64 = std::env::var("BOT_POLL_SECS")
+                        .ok()
+                        .and_then(|s| s.parse().ok())
+                        .unwrap_or(15);
+                    tracing::info!(bot = %client.address(), join_delay, "PvP bot enabled");
+                    let bot_repo = Arc::new(repo.clone());
+                    tokio::spawn(async move {
+                        bot::run(
+                            bot_repo,
+                            client,
+                            bot::BotConfig {
+                                poll_interval: Duration::from_secs(poll_secs),
+                                join_delay: Duration::from_secs(join_delay),
+                            },
+                        )
+                        .await;
+                    });
+                }
+                Err(e) => tracing::warn!("PvP bot not started: {e}"),
+            },
+            None => tracing::warn!("BOT_ENABLED set but resolver not configured; bot not started"),
         }
     }
 

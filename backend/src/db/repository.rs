@@ -127,4 +127,11 @@ pub trait GameRepository: Send + Sync + 'static {
         address: &str,
         active_only: bool,
     ) -> impl Future<Output = Result<Vec<GameRecord>, RepositoryError>> + Send;
+
+    /// PvP games in a given status — used by the bot to find lobbies to fill
+    /// (`waiting`) and games it should play (`active`).
+    fn get_pvp_games_by_status(
+        &self,
+        status: &str,
+    ) -> impl Future<Output = Result<Vec<GameRecord>, RepositoryError>> + Send;
 }
