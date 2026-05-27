@@ -9,6 +9,7 @@ import StatsModal, { EMPTY_STATS, type Stats } from "./StatsModal";
 import Leaderboard, { LeaderboardPanel } from "./Leaderboard";
 import type { GuessResult, LetterResult } from "@/lib/game";
 import { MAX_GUESSES, WORD_LENGTH } from "@/lib/game";
+import type { GuessResponse, ErrorResponse } from "@/lib/api";
 import {
   isMiniappMode,
   initCircles,
@@ -177,7 +178,7 @@ export default function Game() {
         }),
       });
 
-      const data = await res.json();
+      const data: GuessResponse & Partial<ErrorResponse> = await res.json();
 
       if (!res.ok) {
         setToast(data.error || "Invalid guess");
@@ -200,12 +201,12 @@ export default function Game() {
 
       if (data.won) {
         newStatus = "won";
-        newAnswer = data.answer;
+        newAnswer = data.answer ?? undefined;
         setToast("Brilliant!");
         updateStats(true, newGuesses.length);
       } else if (data.gameOver) {
         newStatus = "lost";
-        newAnswer = data.answer;
+        newAnswer = data.answer ?? undefined;
         updateStats(false, newGuesses.length);
       }
 

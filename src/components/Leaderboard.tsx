@@ -2,19 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { CirclesProfile, fetchCirclesProfiles } from "@/lib/circles";
-
-interface LeaderboardEntry {
-  address: string;
-  wins: number;
-  games_played: number;
-  avg_guesses: number;
-}
-
-interface DailyResult {
-  address: string;
-  guesses: number;
-  solved: boolean;
-}
+import type { LeaderboardEntry, DailyResult } from "@/lib/api";
 
 function truncateAddress(addr: string): string {
   if (addr.length <= 10) return addr;

@@ -610,7 +610,7 @@ async fn get_config<R: GameRepository>(State(state): State<Arc<AppState<R>>>) ->
         PvpPlayerStatus,
     ))
 )]
-struct ApiDoc;
+pub struct ApiDoc;
 
 pub fn build_router<R: GameRepository>(
     repo: R,

@@ -1,2 +1,6 @@
 .claude/
 broadcast/
+
+# Generated from the backend OpenAPI spec (see `make openapi`).
+src/lib/api/types.ts
+src/lib/api/openapi.json

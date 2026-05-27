@@ -1,0 +1,514 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Word Circles API",
+    "description": "Backend API for the Word Circles daily word game",
+    "license": {
+      "name": ""
+    },
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/config": {
+      "get": {
+        "tags": [],
+        "operationId": "get_config",
+        "responses": {
+          "200": {
+            "description": "Contract configuration",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractConfig"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Resolver not configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/game": {
+      "get": {
+        "tags": [],
+        "operationId": "get_game",
+        "responses": {
+          "200": {
+            "description": "Current daily game",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/games/{game_id}": {
+      "get": {
+        "tags": [],
+        "operationId": "get_pvp_game",
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "description": "PvP game ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "PvP game state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PvpGameResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Game not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/guess": {
+      "post": {
+        "tags": [],
+        "operationId": "post_guess",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GuessRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Guess evaluation result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuessResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid guess",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/leaderboard": {
+      "get": {
+        "tags": [],
+        "operationId": "get_leaderboard",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Leaderboard entries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LeaderboardEntry"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/leaderboard/daily": {
+      "get": {
+        "tags": [],
+        "operationId": "get_daily_leaderboard",
+        "parameters": [
+          {
+            "name": "gameId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Daily game results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DailyResult"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "tags": [],
+        "operationId": "health",
+        "responses": {
+          "200": {
+            "description": "Health check",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ContractConfig": {
+        "type": "object",
+        "required": [
+          "resolver",
+          "commitmentAddress",
+          "pvpEnabled"
+        ],
+        "properties": {
+          "commitmentAddress": {
+            "type": "string"
+          },
+          "pvpEnabled": {
+            "type": "boolean"
+          },
+          "resolver": {
+            "type": "string"
+          },
+          "statsAddress": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "DailyResult": {
+        "type": "object",
+        "required": [
+          "address",
+          "guesses",
+          "solved"
+        ],
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "guesses": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "solved": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "GameResponse": {
+        "type": "object",
+        "required": [
+          "gameId"
+        ],
+        "properties": {
+          "gameId": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "GuessRequest": {
+        "type": "object",
+        "required": [
+          "guess",
+          "gameId",
+          "guessNumber"
+        ],
+        "properties": {
+          "gameId": {
+            "type": "string"
+          },
+          "guess": {
+            "type": "string"
+          },
+          "guessNumber": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "player": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "GuessResponse": {
+        "type": "object",
+        "required": [
+          "guess",
+          "results",
+          "won",
+          "gameOver"
+        ],
+        "properties": {
+          "answer": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "gameOver": {
+            "type": "boolean"
+          },
+          "guess": {
+            "type": "string"
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LetterResult"
+            }
+          },
+          "won": {
+            "type": "boolean"
+          }
+        }
+      },
+      "LeaderboardEntry": {
+        "type": "object",
+        "required": [
+          "address",
+          "wins",
+          "games_played",
+          "avg_guesses"
+        ],
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "avg_guesses": {
+            "type": "number",
+            "format": "double"
+          },
+          "games_played": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "wins": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "LetterResult": {
+        "type": "string",
+        "enum": [
+          "correct",
+          "present",
+          "absent"
+        ]
+      },
+      "PvpGameResponse": {
+        "type": "object",
+        "required": [
+          "gameId",
+          "status",
+          "gameType",
+          "capacity",
+          "players",
+          "timeoutSecs"
+        ],
+        "properties": {
+          "answer": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "capacity": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "gameId": {
+            "type": "string"
+          },
+          "gameType": {
+            "type": "string"
+          },
+          "players": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PvpPlayerStatus"
+            }
+          },
+          "status": {
+            "type": "string"
+          },
+          "timeoutSecs": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "PvpPlayerStatus": {
+        "type": "object",
+        "required": [
+          "address",
+          "status",
+          "guessCount"
+        ],
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "guessCount": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

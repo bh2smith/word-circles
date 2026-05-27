@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "gen:api": "openapi-typescript src/lib/api/openapi.json -o src/lib/api/types.ts",
+    "prebuild": "bun run gen:api",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
@@ -26,6 +28,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
+    "openapi-typescript": "^7.13.0",
     "prettier": "^3.8.3",
     "tailwindcss": "^4",
     "typescript": "^5"

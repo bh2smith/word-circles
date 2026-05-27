@@ -22,7 +22,13 @@ DEPLOYER_ADDRESS := $(shell cast wallet address --account $(DEPLOYER_ACCOUNT) 2>
 RESOLVER_ADDRESS := $(shell cast wallet address --account $(RESOLVER_ACCOUNT) 2>/dev/null)
 VERIFY_FLAG      := $(if $(GNOSISSCAN_API_KEY),--verify,)
 
-.PHONY: deploy verify-all
+.PHONY: deploy verify-all openapi
+
+# Refresh the committed OpenAPI snapshot from the backend, then regenerate the
+# frontend TypeScript types. Run after changing any API handler or schema.
+openapi:
+	cd backend && cargo run --quiet --bin dump_openapi > ../src/lib/api/openapi.json
+	bun run gen:api
 
 deploy:
 	@echo "Deployer:  $(DEPLOYER_ADDRESS)"
