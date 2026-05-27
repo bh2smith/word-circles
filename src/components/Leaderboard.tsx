@@ -29,11 +29,7 @@ interface LeaderboardProps {
   gameId: number | null;
 }
 
-export default function Leaderboard({
-  open,
-  onClose,
-  gameId,
-}: LeaderboardProps) {
+export function LeaderboardPanel({ gameId }: { gameId: number | null }) {
   const [tab, setTab] = useState<Tab>("daily");
   const [overall, setOverall] = useState<LeaderboardEntry[]>([]);
   const [daily, setDaily] = useState<DailyResult[]>([]);
@@ -78,11 +74,53 @@ export default function Leaderboard({
   }, [gameId, loadProfiles]);
 
   useEffect(() => {
-    if (!open) return;
     if (tab === "overall") fetchOverall();
     else fetchDaily();
-  }, [open, tab, fetchOverall, fetchDaily]);
+  }, [tab, fetchOverall, fetchDaily]);
 
+  return (
+    <>
+      <div className="flex gap-2 mb-4">
+        <button
+          onClick={() => setTab("daily")}
+          className={`flex-1 py-1.5 rounded text-sm font-semibold transition-colors ${
+            tab === "daily"
+              ? "bg-green-600 text-white"
+              : "bg-neutral-700 text-neutral-400 hover:text-white"
+          }`}
+        >
+          Today #{gameId}
+        </button>
+        <button
+          onClick={() => setTab("overall")}
+          className={`flex-1 py-1.5 rounded text-sm font-semibold transition-colors ${
+            tab === "overall"
+              ? "bg-green-600 text-white"
+              : "bg-neutral-700 text-neutral-400 hover:text-white"
+          }`}
+        >
+          All Time
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto min-h-0">
+        {loading ? (
+          <p className="text-center text-neutral-400 py-8">Loading...</p>
+        ) : tab === "daily" ? (
+          <DailyTable results={daily} profiles={profiles} />
+        ) : (
+          <OverallTable entries={overall} profiles={profiles} />
+        )}
+      </div>
+    </>
+  );
+}
+
+export default function Leaderboard({
+  open,
+  onClose,
+  gameId,
+}: LeaderboardProps) {
   if (!open) return null;
 
   return (
@@ -98,38 +136,7 @@ export default function Leaderboard({
           Leaderboard
         </h2>
 
-        <div className="flex gap-2 mb-4">
-          <button
-            onClick={() => setTab("daily")}
-            className={`flex-1 py-1.5 rounded text-sm font-semibold transition-colors ${
-              tab === "daily"
-                ? "bg-green-600 text-white"
-                : "bg-neutral-700 text-neutral-400 hover:text-white"
-            }`}
-          >
-            Today #{gameId}
-          </button>
-          <button
-            onClick={() => setTab("overall")}
-            className={`flex-1 py-1.5 rounded text-sm font-semibold transition-colors ${
-              tab === "overall"
-                ? "bg-green-600 text-white"
-                : "bg-neutral-700 text-neutral-400 hover:text-white"
-            }`}
-          >
-            All Time
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto min-h-0">
-          {loading ? (
-            <p className="text-center text-neutral-400 py-8">Loading...</p>
-          ) : tab === "daily" ? (
-            <DailyTable results={daily} profiles={profiles} />
-          ) : (
-            <OverallTable entries={overall} profiles={profiles} />
-          )}
-        </div>
+        <LeaderboardPanel gameId={gameId} />
 
         <button
           onClick={onClose}

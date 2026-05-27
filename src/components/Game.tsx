@@ -6,7 +6,7 @@ import Keyboard, { computeLetterStates } from "./Keyboard";
 import Toast from "./Toast";
 import HintPanel from "./HintPanel";
 import StatsModal, { EMPTY_STATS, type Stats } from "./StatsModal";
-import Leaderboard from "./Leaderboard";
+import Leaderboard, { LeaderboardPanel } from "./Leaderboard";
 import type { GuessResult, LetterResult } from "@/lib/game";
 import { MAX_GUESSES, WORD_LENGTH } from "@/lib/game";
 import {
@@ -265,20 +265,36 @@ export default function Game() {
 
   const letterStates = computeLetterStates(guesses);
 
-  if (gameId === null || (isMiniappMode() && !walletAddress)) {
+  if (gameId === null) {
     return (
       <div className="flex flex-col items-center justify-center h-screen text-white gap-4">
         <h1 className="text-2xl font-bold tracking-wider">WORD CIRCLES</h1>
-        <p className="text-neutral-400">
-          {gameId === null
-            ? "Loading..."
-            : "Connect your Circles wallet to play"}
-        </p>
+        <p className="text-neutral-400">Loading...</p>
       </div>
     );
   }
 
-  if (isMiniappMode() && alreadyPlayed === null) {
+  // Require a connected wallet to play. Without one (e.g. opened in a plain
+  // browser rather than the Circles miniapp) we only reveal the leaderboard,
+  // so the day's word can't be solved off the record and replayed in one guess.
+  if (!walletAddress) {
+    return (
+      <div className="flex flex-col items-center gap-5 w-full max-w-md mx-auto px-4 text-white">
+        <h1 className="text-2xl font-bold tracking-wider">WORD CIRCLES</h1>
+        <p className="text-neutral-400 text-center">
+          Connect your Circles wallet to play today&apos;s word.
+        </p>
+        <div className="w-full bg-neutral-800 rounded-xl p-6 max-h-[70vh] flex flex-col">
+          <h2 className="text-center text-lg font-bold mb-4 uppercase tracking-wider">
+            Leaderboard
+          </h2>
+          <LeaderboardPanel gameId={gameId} />
+        </div>
+      </div>
+    );
+  }
+
+  if (alreadyPlayed === null) {
     return (
       <div className="flex flex-col items-center justify-center h-screen text-white gap-4">
         <h1 className="text-2xl font-bold tracking-wider">WORD CIRCLES</h1>
@@ -296,6 +312,17 @@ export default function Game() {
         <p className="text-neutral-500 text-sm">
           Come back tomorrow for a new word.
         </p>
+        <button
+          onClick={() => setShowLeaderboard(true)}
+          className="mt-2 px-4 py-2 text-sm font-semibold rounded bg-green-600 text-white hover:bg-green-500 transition-colors"
+        >
+          View Leaderboard
+        </button>
+        <Leaderboard
+          open={showLeaderboard}
+          onClose={() => setShowLeaderboard(false)}
+          gameId={gameId}
+        />
       </div>
     );
   }
