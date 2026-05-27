@@ -65,6 +65,67 @@
         }
       }
     },
+    "/api/games": {
+      "get": {
+        "tags": [],
+        "operationId": "get_player_games",
+        "parameters": [
+          {
+            "name": "player",
+            "in": "query",
+            "description": "Player address (0x-prefixed) to look up PvP games for.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "active",
+            "in": "query",
+            "description": "Limit to games still in progress (waiting/active).",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "PvP games for a player, most recent first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PvpGameResponse"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid player address",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/games/{game_id}": {
       "get": {
         "tags": [],

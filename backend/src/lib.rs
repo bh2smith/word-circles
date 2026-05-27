@@ -485,6 +485,50 @@ fn player_status(p: &GamePlayerRecord) -> String {
     }
 }
 
+fn is_valid_address(s: &str) -> bool {
+    let body = s.strip_prefix("0x").unwrap_or(s);
+    body.len() == 40 && body.chars().all(|c| c.is_ascii_hexdigit())
+}
+
+/// Builds the public PvP view of a game: per-player status (no guess details)
+/// plus the answer once settled. Shared by the single-game and per-player
+/// lookups so both stay in sync on the no-spoiler rule.
+async fn build_pvp_response<R: GameRepository>(
+    state: &AppState<R>,
+    game: GameRecord,
+) -> PvpGameResponse {
+    let players = state
+        .repo
+        .get_game_players(&game.id)
+        .await
+        .unwrap_or_default();
+
+    let player_statuses: Vec<PvpPlayerStatus> = players
+        .iter()
+        .map(|p| PvpPlayerStatus {
+            address: p.address.clone(),
+            status: player_status(p),
+            guess_count: p.guess_count,
+        })
+        .collect();
+
+    let answer = if game.status == "settled" || game.status == "completed" {
+        Some(game::get_answer_by_index(game.word_index).to_string())
+    } else {
+        None
+    };
+
+    PvpGameResponse {
+        game_id: game.id,
+        status: game.status,
+        game_type: game.game_type,
+        capacity: game.capacity.unwrap_or(2),
+        players: player_statuses,
+        timeout_secs: game.timeout_secs.unwrap_or(10800),
+        answer,
+    }
+}
+
 #[utoipa::path(
     get,
     path = "/api/games/{game_id}",
@@ -510,40 +554,59 @@ async fn get_pvp_game<R: GameRepository>(
         }
     };
 
-    let players = state
-        .repo
-        .get_game_players(&game_id)
-        .await
-        .unwrap_or_default();
-
-    let player_statuses: Vec<PvpPlayerStatus> = players
-        .iter()
-        .map(|p| PvpPlayerStatus {
-            address: p.address.clone(),
-            status: player_status(p),
-            guess_count: p.guess_count,
-        })
-        .collect();
-
-    let answer = if game.status == "settled" || game.status == "completed" {
-        Some(game::get_answer_by_index(game.word_index).to_string())
-    } else {
-        None
-    };
-
-    let response = PvpGameResponse {
-        game_id: game.id,
-        status: game.status,
-        game_type: game.game_type,
-        capacity: game.capacity.unwrap_or(2),
-        players: player_statuses,
-        timeout_secs: game.timeout_secs.unwrap_or(10800),
-        answer,
-    };
+    let response = build_pvp_response(&state, game).await;
 
     (
         StatusCode::OK,
         Json(serde_json::to_value(response).unwrap()),
+    )
+}
+
+#[derive(Deserialize, IntoParams)]
+struct PlayerGamesQuery {
+    /// Player address (0x-prefixed) to look up PvP games for.
+    player: String,
+    /// Limit to games still in progress (waiting/active).
+    #[serde(default)]
+    active: bool,
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/games",
+    params(PlayerGamesQuery),
+    responses(
+        (status = 200, description = "PvP games for a player, most recent first", body = Vec<PvpGameResponse>),
+        (status = 400, description = "Invalid player address", body = ErrorResponse),
+        (status = 500, description = "Internal error", body = ErrorResponse),
+    )
+)]
+async fn get_player_games<R: GameRepository>(
+    State(state): State<Arc<AppState<R>>>,
+    Query(q): Query<PlayerGamesQuery>,
+) -> impl IntoResponse {
+    debug!(player = %q.player, active = q.active, "GET /api/games");
+
+    if !is_valid_address(&q.player) {
+        return err_response(StatusCode::BAD_REQUEST, "Invalid player address");
+    }
+
+    let games = match state.repo.get_games_by_player(&q.player, q.active).await {
+        Ok(games) => games,
+        Err(e) => {
+            error!("Failed to fetch games for {}: {e}", q.player);
+            return err_response(StatusCode::INTERNAL_SERVER_ERROR, "Failed to fetch games");
+        }
+    };
+
+    let mut responses = Vec::with_capacity(games.len());
+    for game in games {
+        responses.push(build_pvp_response(&state, game).await);
+    }
+
+    (
+        StatusCode::OK,
+        Json(serde_json::to_value(responses).unwrap()),
     )
 }
 
@@ -596,6 +659,7 @@ async fn get_config<R: GameRepository>(State(state): State<Arc<AppState<R>>>) ->
         get_leaderboard,
         get_daily_leaderboard,
         get_pvp_game,
+        get_player_games,
     ),
     components(schemas(
         GameResponse,
@@ -626,6 +690,7 @@ pub fn build_router<R: GameRepository>(
         .route("/health", get(health))
         .route("/api/config", get(get_config::<R>))
         .route("/api/game", get(get_game::<R>))
+        .route("/api/games", get(get_player_games::<R>))
         .route("/api/games/{game_id}", get(get_pvp_game::<R>))
         .route("/api/guess", post(post_guess::<R>))
         .route("/api/leaderboard", get(get_leaderboard::<R>))

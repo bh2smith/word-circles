@@ -445,6 +445,58 @@ impl GameRepository for PostgresRepository {
             })
             .collect())
     }
+
+    async fn get_games_by_player(
+        &self,
+        address: &str,
+        active_only: bool,
+    ) -> Result<Vec<GameRecord>, RepositoryError> {
+        let bytes = decode_address(address);
+        let rows: Vec<(
+            String,
+            String,
+            i32,
+            Option<String>,
+            Option<String>,
+            String,
+            String,
+            Option<i32>,
+            Option<String>,
+            Option<String>,
+            Option<i32>,
+        )> = sqlx::query_as(
+            "SELECT g.id, g.game_type, g.word_index, g.salt, g.commitment, g.status,
+                    g.created_at::text, g.capacity, g.token, g.amount, g.timeout_secs
+             FROM game_players gp
+             JOIN games g ON g.id = gp.game_id
+             WHERE gp.address = $1 AND g.game_type = 'pvp'
+               AND ($2 = false OR g.status IN ('waiting', 'active'))
+             ORDER BY g.created_at DESC
+             LIMIT 20",
+        )
+        .bind(&bytes)
+        .bind(active_only)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| RepositoryError::Internal(e.to_string()))?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| GameRecord {
+                id: r.0,
+                game_type: r.1,
+                word_index: r.2 as usize,
+                salt: r.3,
+                commitment: r.4,
+                status: r.5,
+                created_at: r.6,
+                capacity: r.7.map(|v| v as u32),
+                token: r.8,
+                amount: r.9,
+                timeout_secs: r.10.map(|v| v as u32),
+            })
+            .collect())
+    }
 }
 
 fn is_unique_violation(e: &sqlx::Error) -> bool {
@@ -671,5 +723,41 @@ mod tests {
 
         let players = repo.get_game_players("0xgame4").await.unwrap();
         assert_eq!(players.len(), 1);
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn get_games_by_player_filters(pool: PgPool) {
+        let repo = PostgresRepository::from_pool(pool);
+        let addr = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+        let mut waiting = pvp_game("0xwaiting");
+        waiting.status = "waiting".into();
+        repo.create_game(&waiting).await.unwrap();
+
+        let mut settled = pvp_game("0xsettled");
+        settled.status = "settled".into();
+        repo.create_game(&settled).await.unwrap();
+
+        // A daily game the same address plays — must never be returned.
+        repo.create_game(&daily_game("99", 0)).await.unwrap();
+
+        let p = repo.get_or_create_player(addr).await.unwrap();
+        repo.add_game_player("0xwaiting", p.id, addr).await.unwrap();
+        repo.add_game_player("0xsettled", p.id, addr).await.unwrap();
+        repo.add_game_player("99", p.id, addr).await.unwrap();
+
+        let all = repo.get_games_by_player(addr, false).await.unwrap();
+        assert_eq!(all.len(), 2, "both pvp games, daily excluded");
+        assert!(all.iter().all(|g| g.game_type == "pvp"));
+
+        let active = repo.get_games_by_player(addr, true).await.unwrap();
+        assert_eq!(active.len(), 1, "only the waiting game is in progress");
+        assert_eq!(active[0].id, "0xwaiting");
+
+        let other = repo
+            .get_games_by_player("0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", false)
+            .await
+            .unwrap();
+        assert!(other.is_empty());
     }
 }

@@ -118,4 +118,13 @@ pub trait GameRepository: Send + Sync + 'static {
     fn get_active_pvp_games(
         &self,
     ) -> impl Future<Output = Result<Vec<GameRecord>, RepositoryError>> + Send;
+
+    /// PvP games a player has joined, most recent first. When `active_only`,
+    /// limits to games still in progress (`waiting`/`active`) — used by the
+    /// lobby to discover the on-chain gameId assigned after `join`.
+    fn get_games_by_player(
+        &self,
+        address: &str,
+        active_only: bool,
+    ) -> impl Future<Output = Result<Vec<GameRecord>, RepositoryError>> + Send;
 }

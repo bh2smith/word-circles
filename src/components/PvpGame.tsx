@@ -1,0 +1,508 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import Board from "./Board";
+import Keyboard, { computeLetterStates } from "./Keyboard";
+import Toast from "./Toast";
+import HintPanel from "./HintPanel";
+import type { GuessResult, LetterResult } from "@/lib/game";
+import { WORD_LENGTH } from "@/lib/game";
+import {
+  initCircles,
+  subscribeWallet,
+  getConnectedAddress,
+  joinPvpGame,
+} from "@/lib/circles";
+import { encodeApprove, encodeJoin } from "@/lib/contract";
+import type {
+  ContractConfig,
+  PvpGameResponse,
+  GuessResponse,
+  ErrorResponse,
+} from "@/lib/api";
+
+// Lobby lifecycle. Matchmaking is on-chain (escrow.join), so after submitting
+// we discover the assigned gameId from the backend, then poll until the game
+// fills and the resolver commits the word (status -> "active").
+type Phase =
+  | "submitting" // approve + join sent, awaiting wallet
+  | "discovering" // looking up the assigned gameId
+  | "waiting" // joined, waiting for an opponent
+  | "playing"
+  | "finished"; // local board done; awaiting settlement
+
+interface SavedPvp {
+  gameId: string;
+  guesses: GuessResult[];
+  phase: Phase;
+}
+
+const STORAGE_KEY = "wordcircle-pvp";
+
+function loadSaved(): SavedPvp | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function truncate(addr: string): string {
+  return addr.length <= 10 ? addr : `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+}
+
+export default function PvpGame() {
+  const [config, setConfig] = useState<ContractConfig | null>(null);
+  const [configLoaded, setConfigLoaded] = useState(false);
+  const [walletAddress, setWalletAddress] = useState<string | null>(
+    getConnectedAddress(),
+  );
+
+  const [phase, setPhase] = useState<Phase | null>(null); // null = idle/lobby
+  const [gameId, setGameId] = useState<string | null>(null);
+  const [game, setGame] = useState<PvpGameResponse | null>(null);
+  const [guesses, setGuesses] = useState<GuessResult[]>([]);
+  const [currentGuess, setCurrentGuess] = useState("");
+  const [solved, setSolved] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [shake, setShake] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+
+  // gameIds the player was already in before the latest join, so we can pick
+  // out the newly created one during discovery.
+  const beforeIdsRef = useRef<Set<string>>(new Set());
+
+  // Load config + wallet, and resume any in-progress game.
+  useEffect(() => {
+    initCircles();
+    const unsubscribe = subscribeWallet(setWalletAddress);
+
+    fetch("/api/config")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((cfg: ContractConfig | null) => setConfig(cfg))
+      .catch(() => setConfig(null))
+      .finally(() => setConfigLoaded(true));
+
+    const saved = loadSaved();
+    if (saved && saved.gameId) {
+      setGameId(saved.gameId);
+      setGuesses(saved.guesses);
+      // submitting/discovering are transient — resume into the waiting screen
+      // and let polling re-derive the live phase.
+      setPhase(
+        saved.phase === "playing" || saved.phase === "finished"
+          ? saved.phase
+          : "waiting",
+      );
+    }
+
+    return unsubscribe;
+  }, []);
+
+  // Persist resumable phases.
+  useEffect(() => {
+    if (
+      gameId &&
+      (phase === "waiting" || phase === "playing" || phase === "finished")
+    ) {
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ gameId, guesses, phase } satisfies SavedPvp),
+      );
+    }
+  }, [gameId, guesses, phase]);
+
+  const clearSaved = useCallback(() => {
+    if (typeof window !== "undefined") localStorage.removeItem(STORAGE_KEY);
+  }, []);
+
+  const shakeOnce = useCallback(() => {
+    setShake(true);
+    setTimeout(() => setShake(false), 600);
+  }, []);
+
+  const fetchActiveGames = useCallback(
+    async (address: string): Promise<PvpGameResponse[]> => {
+      const res = await fetch(
+        `/api/games?player=${encodeURIComponent(address)}&active=true`,
+      );
+      if (!res.ok) return [];
+      return res.json();
+    },
+    [],
+  );
+
+  const findMatch = useCallback(async () => {
+    if (!config || !walletAddress) return;
+    const { escrowAddress, token, amount, resolver } = config;
+    const capacity = config.capacity ?? 2;
+    if (!escrowAddress || !token || !amount) {
+      setToast("PvP is not configured");
+      return;
+    }
+    setPhase("submitting");
+    try {
+      const stake = BigInt(amount);
+      const approveData = encodeApprove(escrowAddress, stake);
+      const joinData = encodeJoin(resolver, token, stake, capacity);
+      const before = await fetchActiveGames(walletAddress);
+      beforeIdsRef.current = new Set(before.map((g) => g.gameId));
+      await joinPvpGame(escrowAddress, token, approveData, joinData);
+      setPhase("discovering");
+    } catch (err) {
+      console.error("PvP join failed:", err);
+      setToast("Couldn't join — transaction rejected or reverted");
+      setPhase(null);
+    }
+  }, [config, walletAddress, fetchActiveGames]);
+
+  // Discover the gameId assigned on-chain once the join is indexed.
+  useEffect(() => {
+    if (phase !== "discovering" || !walletAddress) return;
+    let active = true;
+    const startedAt = Date.now();
+
+    const tick = async () => {
+      const games = await fetchActiveGames(walletAddress);
+      if (!active) return;
+      const fresh = games.find((g) => !beforeIdsRef.current.has(g.gameId));
+      const chosen = fresh ?? games[0];
+      if (chosen) {
+        setGameId(chosen.gameId);
+        setGame(chosen);
+        setPhase(chosen.status === "active" ? "playing" : "waiting");
+      } else if (Date.now() - startedAt > 60_000) {
+        setToast("Couldn't find your game yet — it may still be pending.");
+        setPhase(null);
+      }
+    };
+
+    tick();
+    const id = setInterval(tick, 2500);
+    return () => {
+      active = false;
+      clearInterval(id);
+    };
+  }, [phase, walletAddress, fetchActiveGames]);
+
+  // Poll the live game state while waiting, playing, or awaiting settlement.
+  useEffect(() => {
+    if (
+      !gameId ||
+      (phase !== "waiting" && phase !== "playing" && phase !== "finished")
+    ) {
+      return;
+    }
+    let active = true;
+
+    const tick = async () => {
+      const res = await fetch(`/api/games/${gameId}`);
+      if (!active || !res.ok) return;
+      const g: PvpGameResponse = await res.json();
+      if (!active) return;
+      setGame(g);
+      if (phase === "waiting" && g.status === "active") setPhase("playing");
+    };
+
+    tick();
+    const id = setInterval(tick, 2500);
+    return () => {
+      active = false;
+      clearInterval(id);
+    };
+  }, [gameId, phase]);
+
+  const submitGuess = useCallback(async () => {
+    if (
+      phase !== "playing" ||
+      !gameId ||
+      currentGuess.length !== WORD_LENGTH ||
+      submitting
+    ) {
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/guess", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          guess: currentGuess,
+          gameId,
+          guessNumber: guesses.length,
+          player: walletAddress ?? undefined,
+        }),
+      });
+      const data: GuessResponse & Partial<ErrorResponse> = await res.json();
+      if (!res.ok) {
+        setToast(data.error || "Invalid guess");
+        shakeOnce();
+        return;
+      }
+      const newGuesses = [
+        ...guesses,
+        { word: data.guess, results: data.results as LetterResult[] },
+      ];
+      setGuesses(newGuesses);
+      setCurrentGuess("");
+      if (data.won) {
+        setSolved(true);
+        setToast("Solved! Waiting for settlement…");
+        setPhase("finished");
+      } else if (data.gameOver) {
+        setPhase("finished");
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  }, [
+    phase,
+    gameId,
+    currentGuess,
+    guesses,
+    submitting,
+    walletAddress,
+    shakeOnce,
+  ]);
+
+  const onKey = useCallback(
+    (key: string) => {
+      if (phase !== "playing" || submitting) return;
+      if (key === "Enter") {
+        if (currentGuess.length === WORD_LENGTH) submitGuess();
+        else {
+          setToast("Not enough letters");
+          shakeOnce();
+        }
+        return;
+      }
+      if (key === "⌫" || key === "Backspace") {
+        setCurrentGuess((p) => p.slice(0, -1));
+        return;
+      }
+      if (/^[a-zA-Z]$/.test(key) && currentGuess.length < WORD_LENGTH) {
+        setCurrentGuess((p) => p + key.toLowerCase());
+      }
+    },
+    [phase, submitting, currentGuess, submitGuess, shakeOnce],
+  );
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      onKey(e.key);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onKey]);
+
+  const resetToLobby = useCallback(() => {
+    clearSaved();
+    setPhase(null);
+    setGameId(null);
+    setGame(null);
+    setGuesses([]);
+    setCurrentGuess("");
+    setSolved(false);
+  }, [clearSaved]);
+
+  // --- Rendering ---------------------------------------------------------
+
+  const title = (
+    <h1 className="text-2xl font-bold tracking-wider text-white">
+      PVP CIRCLES
+    </h1>
+  );
+
+  if (!configLoaded) {
+    return (
+      <div className="flex flex-col items-center gap-4 text-white">
+        {title}
+        <p className="text-neutral-400">Loading…</p>
+      </div>
+    );
+  }
+
+  const pvpAvailable =
+    config?.pvpEnabled && config.escrowAddress && config.token && config.amount;
+
+  if (!pvpAvailable) {
+    return (
+      <div className="flex flex-col items-center gap-4 text-white px-4 text-center">
+        {title}
+        <p className="text-neutral-400">
+          PvP isn&apos;t available right now. Check back soon.
+        </p>
+      </div>
+    );
+  }
+
+  if (!walletAddress) {
+    return (
+      <div className="flex flex-col items-center gap-4 text-white px-4 text-center">
+        {title}
+        <p className="text-neutral-400">
+          Connect your Circles wallet to play head-to-head.
+        </p>
+      </div>
+    );
+  }
+
+  const stakeLabel = (() => {
+    try {
+      // Show whole-token stake (Circles tokens are 18 decimals).
+      const wei = BigInt(config!.amount!);
+      const whole = wei / BigInt("1000000000000000000");
+      return `${whole} CRC`;
+    } catch {
+      return "the entry stake";
+    }
+  })();
+
+  const Header = (
+    <div className="flex flex-col items-center gap-1">
+      {title}
+      <p className="text-neutral-500 text-xs font-mono">
+        {truncate(walletAddress)}
+      </p>
+    </div>
+  );
+
+  if (phase === null) {
+    return (
+      <div className="flex flex-col items-center gap-5 text-white px-4 text-center max-w-md">
+        {Header}
+        <p className="text-neutral-400">
+          Stake {stakeLabel} and race an opponent on the same word. Fewest
+          guesses wins the pot.
+        </p>
+        <button
+          onClick={findMatch}
+          className="px-6 py-2.5 rounded-lg bg-green-600 font-bold hover:bg-green-500 transition-colors"
+        >
+          Find Match
+        </button>
+        {toast && <Toast message={toast} onDone={() => setToast(null)} />}
+      </div>
+    );
+  }
+
+  if (phase === "submitting") {
+    return (
+      <div className="flex flex-col items-center gap-4 text-white px-4 text-center">
+        {Header}
+        <p className="text-neutral-400">
+          Confirm the approve + join in your wallet…
+        </p>
+        {toast && <Toast message={toast} onDone={() => setToast(null)} />}
+      </div>
+    );
+  }
+
+  if (phase === "discovering") {
+    return (
+      <div className="flex flex-col items-center gap-4 text-white px-4 text-center">
+        {Header}
+        <p className="text-neutral-400 animate-pulse">Finding your game…</p>
+        {toast && <Toast message={toast} onDone={() => setToast(null)} />}
+      </div>
+    );
+  }
+
+  if (phase === "waiting") {
+    const joined = game?.players.length ?? 1;
+    const capacity = game?.capacity ?? config?.capacity ?? 2;
+    return (
+      <div className="flex flex-col items-center gap-4 text-white px-4 text-center max-w-md">
+        {Header}
+        <p className="text-lg">Waiting for an opponent…</p>
+        <p className="text-neutral-400">
+          {joined}/{capacity} joined
+        </p>
+        <span className="inline-flex gap-1">
+          <span className="w-2 h-2 bg-green-500 rounded-full animate-bounce [animation-delay:-0.3s]" />
+          <span className="w-2 h-2 bg-green-500 rounded-full animate-bounce [animation-delay:-0.15s]" />
+          <span className="w-2 h-2 bg-green-500 rounded-full animate-bounce" />
+        </span>
+        <button
+          onClick={resetToLobby}
+          className="mt-2 px-4 py-2 text-sm font-semibold rounded bg-neutral-700 hover:bg-neutral-600 transition-colors"
+        >
+          Stop waiting
+        </button>
+        <p className="text-neutral-600 text-xs">
+          Your stake stays escrowed until the game fills and settles (or the
+          timeout refund applies). Stopping only hides this screen.
+        </p>
+      </div>
+    );
+  }
+
+  // playing / finished — show the board.
+  const letterStates = computeLetterStates(guesses);
+  const answer = game?.answer;
+  const settled = game?.status === "settled" || game?.status === "completed";
+
+  return (
+    <div className="relative flex flex-col items-center gap-4 sm:gap-6 w-full max-w-lg mx-auto px-2 text-white">
+      {Header}
+
+      {phase === "finished" && (
+        <div className="text-center">
+          {settled && answer ? (
+            <>
+              <p className="text-lg font-semibold">
+                {solved ? "You solved it!" : "Out of guesses"}
+              </p>
+              <p className="text-neutral-400">
+                The word was{" "}
+                <span className="font-bold uppercase tracking-wider">
+                  {answer}
+                </span>
+              </p>
+            </>
+          ) : (
+            <p className="text-neutral-400 animate-pulse">
+              You finished. Waiting for the result…
+            </p>
+          )}
+        </div>
+      )}
+
+      {toast && <Toast message={toast} onDone={() => setToast(null)} />}
+
+      <Board guesses={guesses} currentGuess={currentGuess} shake={shake} />
+
+      {phase === "playing" && (
+        <>
+          <Keyboard
+            letterStates={letterStates}
+            onKey={onKey}
+            disabled={submitting}
+          />
+          <div className="flex items-start justify-between w-full max-w-lg gap-2">
+            <HintPanel guesses={guesses} onSelectWord={setCurrentGuess} />
+            <button
+              onClick={submitGuess}
+              disabled={currentGuess.length !== WORD_LENGTH || submitting}
+              className="shrink-0 px-4 py-2 text-sm font-semibold rounded bg-green-600 text-white disabled:opacity-30 disabled:cursor-not-allowed hover:bg-green-500 transition-colors"
+            >
+              Submit
+            </button>
+          </div>
+        </>
+      )}
+
+      {phase === "finished" && settled && (
+        <button
+          onClick={resetToLobby}
+          className="px-6 py-2.5 rounded-lg bg-green-600 font-bold hover:bg-green-500 transition-colors"
+        >
+          Play Again
+        </button>
+      )}
+    </div>
+  );
+}
