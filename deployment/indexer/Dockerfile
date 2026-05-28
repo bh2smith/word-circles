@@ -1,7 +1,7 @@
-FROM ghcr.io/bh2smith/arak:main
-# arak.toml lives OUTSIDE the named /data volume so future package rebuilds
-# actually propagate config changes — Docker only seeds a named volume from
-# the image on first start, so anything copied into /data is "stuck" thereafter.
-# Only the SQLite DB (arak.db) needs to persist, and its absolute path inside
-# arak.toml keeps it in the volume.
-COPY arak.toml /etc/arak/arak.toml
+FROM ghcr.io/joshstevens19/rindexer:latest
+# rindexer config + ABIs live in an image-only path so package rebuilds always
+# win (no named-volume seeding gotcha). rindexer writes its event tables into
+# the shared Postgres via DATABASE_URL — no SQLite, no /data volume needed.
+COPY rindexer.yaml /etc/rindexer/rindexer.yaml
+COPY abis/ /etc/rindexer/abis/
+WORKDIR /etc/rindexer

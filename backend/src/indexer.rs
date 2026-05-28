@@ -2,36 +2,34 @@ use crate::chain::ResolverClient;
 use crate::db::models::{GameRecord, GuessRecord};
 use crate::db::repository::{GameRepository, RepositoryError};
 use crate::game;
-use rusqlite::Connection;
+use sqlx::{PgPool, Row};
 use std::sync::Arc;
 use std::time::Duration;
 
 pub struct IndexerConfig {
-    pub arak_db_path: String,
     pub poll_interval: Duration,
     pub resolver: Option<Arc<ResolverClient>>,
     pub pvp_enabled: bool,
     pub pvp_timeout_secs: u32,
 }
 
-/// Polls arak's event tables for new on-chain events and reacts to them.
-/// Arak (running as a sidecar) handles RPC polling, event decoding, reorg
-/// safety, and raw event storage. This loop just reads from arak's SQLite
-/// tables and updates application state accordingly.
-pub async fn run<R: GameRepository>(repo: Arc<R>, config: IndexerConfig) {
+/// Polls rindexer's event tables for new on-chain events and reacts to them.
+/// Rindexer (the sidecar) handles RPC polling, event decoding, reorg safety,
+/// and raw event storage into the shared Postgres. This loop just SELECTs from
+/// the `wc_escrow.*` and `wc_stats.*` schemas and updates application state.
+pub async fn run<R: GameRepository>(repo: Arc<R>, pool: PgPool, config: IndexerConfig) {
     let mut cursor = repo.get_indexer_cursor().await.unwrap_or(0);
 
     tracing::info!(
-        arak_db = %config.arak_db_path,
         cursor,
-        "Event listener starting (polling arak tables)"
+        "Event listener starting (polling rindexer Postgres tables)"
     );
 
     loop {
-        let events = match read_new_events(&config.arak_db_path, cursor) {
+        let events = match read_new_events(&pool, cursor).await {
             Ok(events) => events,
             Err(e) => {
-                tracing::warn!("Failed to read arak events: {e}");
+                tracing::warn!("Failed to read rindexer events: {e}");
                 tokio::time::sleep(config.poll_interval).await;
                 continue;
             }
@@ -39,7 +37,7 @@ pub async fn run<R: GameRepository>(repo: Arc<R>, config: IndexerConfig) {
 
         for event in &events {
             match event {
-                ArakEvent::Created {
+                IndexedEvent::Created {
                     game_id,
                     block_number,
                     player,
@@ -71,7 +69,7 @@ pub async fn run<R: GameRepository>(repo: Arc<R>, config: IndexerConfig) {
                         }
                     }
                 }
-                ArakEvent::Joined {
+                IndexedEvent::Joined {
                     game_id,
                     block_number,
                     player,
@@ -84,7 +82,7 @@ pub async fn run<R: GameRepository>(repo: Arc<R>, config: IndexerConfig) {
                             let _ = repo.add_game_player(game_id, p.id, player).await;
                         }
                     }
-                    if players == capacity && config.pvp_enabled {
+                    if *players == *capacity && config.pvp_enabled {
                         let repo = Arc::clone(&repo);
                         let game_id = game_id.clone();
                         let resolver = config.resolver.clone();
@@ -93,17 +91,16 @@ pub async fn run<R: GameRepository>(repo: Arc<R>, config: IndexerConfig) {
                         });
                     }
                 }
-                ArakEvent::Resolved {
+                IndexedEvent::Resolved {
                     game_id,
                     block_number,
-                    ..
                 } => {
                     tracing::info!(game_id, block_number, "Resolved");
                     if let Err(e) = repo.update_game_status(game_id, "completed").await {
                         tracing::error!(game_id, "Failed to mark game completed: {e}");
                     }
                 }
-                ArakEvent::GameRecorded {
+                IndexedEvent::GameRecorded {
                     block_number,
                     player,
                     game_id,
@@ -130,7 +127,7 @@ pub async fn run<R: GameRepository>(repo: Arc<R>, config: IndexerConfig) {
 }
 
 #[derive(Debug)]
-enum ArakEvent {
+enum IndexedEvent {
     Created {
         game_id: String,
         block_number: u64,
@@ -159,99 +156,137 @@ enum ArakEvent {
     },
 }
 
-impl ArakEvent {
+impl IndexedEvent {
     fn block_number(&self) -> u64 {
         match self {
-            Self::Created { block_number, .. } => *block_number,
-            Self::Joined { block_number, .. } => *block_number,
-            Self::Resolved { block_number, .. } => *block_number,
-            Self::GameRecorded { block_number, .. } => *block_number,
+            Self::Created { block_number, .. }
+            | Self::Joined { block_number, .. }
+            | Self::Resolved { block_number, .. }
+            | Self::GameRecorded { block_number, .. } => *block_number,
         }
     }
 }
 
-fn read_new_events(arak_db_path: &str, cursor: u64) -> Result<Vec<ArakEvent>, rusqlite::Error> {
-    let conn = Connection::open_with_flags(
-        arak_db_path,
-        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
-    )?;
+/// Reads new events from rindexer's tables. Tables may not exist yet on first
+/// boot (rindexer creates them on its first poll); per-query errors are logged
+/// at debug and swallowed so the loop keeps trying.
+async fn read_new_events(pool: &PgPool, cursor: u64) -> Result<Vec<IndexedEvent>, sqlx::Error> {
+    let mut events = Vec::new();
+    let cursor_i64 = cursor as i64;
 
-    let mut events: Vec<ArakEvent> = Vec::new();
-
-    if let Ok(mut stmt) = conn.prepare(
-        "SELECT block_number, gameId, player, capacity, token, amount
-         FROM created WHERE block_number > ?1 ORDER BY block_number, log_index",
-    ) {
-        let rows = stmt.query_map([cursor], |row| {
-            Ok(ArakEvent::Created {
-                block_number: row.get(0)?,
-                game_id: row.get(1)?,
-                player: row.get(2)?,
-                capacity: row.get(3)?,
-                token: row.get(4)?,
-                amount: row.get(5)?,
-            })
-        })?;
-        for row in rows {
-            events.push(row?);
+    // Created — bytes32 game_id stored as BYTEA, capacity uint128 as NUMERIC
+    match sqlx::query(
+        "SELECT block_number,
+                '0x' || encode(game_id, 'hex') AS game_id,
+                player, capacity::text AS capacity, token, amount
+         FROM wc_escrow.created
+         WHERE block_number > $1
+         ORDER BY block_number, log_index",
+    )
+    .bind(cursor_i64)
+    .fetch_all(pool)
+    .await
+    {
+        Ok(rows) => {
+            for r in rows {
+                events.push(IndexedEvent::Created {
+                    block_number: r.get::<i64, _>("block_number") as u64,
+                    game_id: r.get::<String, _>("game_id"),
+                    player: trim_addr(r.get::<String, _>("player")),
+                    capacity: r.get::<String, _>("capacity"),
+                    token: trim_addr(r.get::<String, _>("token")),
+                    amount: r.get::<String, _>("amount"),
+                });
+            }
         }
+        Err(e) => tracing::debug!("read created events: {e}"),
     }
 
-    if let Ok(mut stmt) = conn.prepare(
-        "SELECT j.block_number, j.gameId, j.player, j.players, c.capacity
-         FROM joined j
-         LEFT JOIN created c ON c.gameId = j.gameId
-         WHERE j.block_number > ?1 ORDER BY j.block_number, j.log_index",
-    ) {
-        let rows = stmt.query_map([cursor], |row| {
-            Ok(ArakEvent::Joined {
-                block_number: row.get(0)?,
-                game_id: row.get(1)?,
-                player: row.get(2)?,
-                players: row.get(3)?,
-                capacity: row.get::<_, Option<i64>>(4)?.unwrap_or(0),
-            })
-        })?;
-        for row in rows {
-            events.push(row?);
+    // Joined — LEFT JOIN created to recover the lobby capacity (Joined event
+    // itself doesn't carry it).
+    match sqlx::query(
+        "SELECT j.block_number,
+                '0x' || encode(j.game_id, 'hex') AS game_id,
+                j.player,
+                j.players::bigint AS players,
+                COALESCE(c.capacity::bigint, 0) AS capacity
+         FROM wc_escrow.joined j
+         LEFT JOIN wc_escrow.created c ON c.game_id = j.game_id
+         WHERE j.block_number > $1
+         ORDER BY j.block_number, j.log_index",
+    )
+    .bind(cursor_i64)
+    .fetch_all(pool)
+    .await
+    {
+        Ok(rows) => {
+            for r in rows {
+                events.push(IndexedEvent::Joined {
+                    block_number: r.get::<i64, _>("block_number") as u64,
+                    game_id: r.get::<String, _>("game_id"),
+                    player: trim_addr(r.get::<String, _>("player")),
+                    players: r.get::<i64, _>("players"),
+                    capacity: r.get::<i64, _>("capacity"),
+                });
+            }
         }
+        Err(e) => tracing::debug!("read joined events: {e}"),
     }
 
-    if let Ok(mut stmt) = conn.prepare(
-        "SELECT block_number, gameId
-         FROM resolved WHERE block_number > ?1 ORDER BY block_number, log_index",
-    ) {
-        let rows = stmt.query_map([cursor], |row| {
-            Ok(ArakEvent::Resolved {
-                block_number: row.get(0)?,
-                game_id: row.get(1)?,
-            })
-        })?;
-        for row in rows {
-            events.push(row?);
+    match sqlx::query(
+        "SELECT block_number, '0x' || encode(game_id, 'hex') AS game_id
+         FROM wc_escrow.resolved
+         WHERE block_number > $1
+         ORDER BY block_number, log_index",
+    )
+    .bind(cursor_i64)
+    .fetch_all(pool)
+    .await
+    {
+        Ok(rows) => {
+            for r in rows {
+                events.push(IndexedEvent::Resolved {
+                    block_number: r.get::<i64, _>("block_number") as u64,
+                    game_id: r.get::<String, _>("game_id"),
+                });
+            }
         }
+        Err(e) => tracing::debug!("read resolved events: {e}"),
     }
 
-    if let Ok(mut stmt) = conn.prepare(
-        "SELECT block_number, player, gameId, won, guesses
-         FROM game_recorded WHERE block_number > ?1 ORDER BY block_number, log_index",
-    ) {
-        let rows = stmt.query_map([cursor], |row| {
-            Ok(ArakEvent::GameRecorded {
-                block_number: row.get(0)?,
-                player: row.get(1)?,
-                game_id: row.get(2)?,
-                won: row.get::<_, i32>(3)? != 0,
-                guesses: row.get(4)?,
-            })
-        })?;
-        for row in rows {
-            events.push(row?);
+    // GameRecorded — Stats schema; gameId is uint32, guesses uint8, won bool
+    match sqlx::query(
+        "SELECT block_number, player, game_id, won, guesses
+         FROM wc_stats.game_recorded
+         WHERE block_number > $1
+         ORDER BY block_number, log_index",
+    )
+    .bind(cursor_i64)
+    .fetch_all(pool)
+    .await
+    {
+        Ok(rows) => {
+            for r in rows {
+                events.push(IndexedEvent::GameRecorded {
+                    block_number: r.get::<i64, _>("block_number") as u64,
+                    player: trim_addr(r.get::<String, _>("player")),
+                    game_id: r.get::<i32, _>("game_id") as u32,
+                    won: r.get::<bool, _>("won"),
+                    guesses: r.get::<i16, _>("guesses") as u8,
+                });
+            }
         }
+        Err(e) => tracing::debug!("read game_recorded events: {e}"),
     }
 
     events.sort_by_key(|e| e.block_number());
     Ok(events)
+}
+
+/// Address columns from rindexer are `CHAR(42)`, which Postgres can return
+/// space-padded depending on the driver. Trim defensively.
+fn trim_addr(s: String) -> String {
+    s.trim().to_string()
 }
 
 pub async fn backfill_game_result<R: GameRepository>(

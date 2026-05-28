@@ -60,14 +60,17 @@ async fn main() {
         }
     };
 
-    if let Ok(arak_db) = std::env::var("ARAK_DB_PATH") {
+    // Indexer: polls rindexer's event tables in the shared Postgres. Runs
+    // unconditionally — daily-leaderboard backfill via GameRecorded is useful
+    // even when PvP is off; the PvP branches inside the loop are gated by
+    // `pvp_enabled` themselves.
+    {
         let poll_secs: u64 = std::env::var("INDEXER_POLL_SECS")
             .ok()
             .and_then(|s| s.parse().ok())
             .unwrap_or(5);
 
         let config = indexer::IndexerConfig {
-            arak_db_path: arak_db,
             poll_interval: Duration::from_secs(poll_secs),
             resolver: resolver.clone(),
             pvp_enabled,
@@ -75,11 +78,12 @@ async fn main() {
         };
 
         let indexer_repo = Arc::new(repo.clone());
+        let indexer_pool = repo.pool();
         tokio::spawn(async move {
-            indexer::run(indexer_repo, config).await;
+            indexer::run(indexer_repo, indexer_pool, config).await;
         });
 
-        tracing::info!("Event listener enabled (polling arak)");
+        tracing::info!(poll_secs, "Event listener enabled (polling rindexer)");
     }
 
     if pvp_enabled {

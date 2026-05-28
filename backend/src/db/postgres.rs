@@ -39,6 +39,13 @@ impl PostgresRepository {
     pub fn from_pool(pool: PgPool) -> Self {
         Self { pool }
     }
+
+    /// Borrow the underlying pool — used by the rindexer-event polling loop,
+    /// which reads from rindexer's `wc_escrow.*` / `wc_stats.*` tables in the
+    /// same database as the application schema.
+    pub fn pool(&self) -> PgPool {
+        self.pool.clone()
+    }
 }
 
 impl GameRepository for PostgresRepository {

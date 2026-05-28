@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   postgres:
     build:
@@ -23,7 +21,6 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: postgres://wordcircles:wordcircles@postgres.word-circles.public.dappnode:5432/wordcircles
-      ARAK_DB_PATH: /data/arak.db
       RESOLVER_PRIVATE_KEY:
       RPC_URL: http://gnosis-erigon.dappnode:8545
       COMMITMENT_ADDRESS: "0x6e99c40bd8b87290EB977336c4Be8b2106baB08f"
@@ -41,8 +38,7 @@ services:
       BOT_POLL_SECS: "15"
       DUNE_API_KEY:
       DUNE_QUERY_ID: "7572687"
-    volumes:
-      - data:/data
+      INDEXER_POLL_SECS: "5"
     ports:
       - "3001:3001"
     depends_on:
@@ -56,16 +52,15 @@ services:
       context: indexer
       dockerfile: Dockerfile
     restart: unless-stopped
-    entrypoint: ["/usr/bin/tini", "--"]
-    command: ["/opt/arak/arak"]
-    # arak.toml is baked into /etc/arak (outside the volume) so config updates
-    # actually propagate on image rebuild. arak.db stays in the /data volume
-    # via the absolute connection path inside arak.toml.
+    # rindexer writes event tables directly into the shared Postgres — no
+    # SQLite, no shared /data volume. Config + ABIs are baked into the image
+    # at /etc/rindexer (set as WORKDIR in the Dockerfile).
+    command: ["/app/rindexer", "start", "indexer"]
     environment:
-      ARAKCONFIG: /etc/arak/arak.toml
-    volumes:
-      - data:/data
+      DATABASE_URL: postgres://wordcircles:wordcircles@postgres.word-circles.public.dappnode:5432/wordcircles
+    depends_on:
+      postgres:
+        condition: service_healthy
 
 volumes:
-  data: {}
   pgdata: {}

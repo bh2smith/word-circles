@@ -5,8 +5,8 @@ A daily Wordle-style word game with on-chain commitments and PvP escrow on Gnosi
 ## Architecture
 
 - **Frontend** — Next.js app (Vercel)
-- **Backend** — Rust/Axum API with SQLite persistence
-- **Indexer** — [Arak](https://github.com/bh2smith/arak) sidecar polling Gnosis chain events
+- **Backend** — Rust/Axum API with Postgres persistence
+- **Indexer** — [rindexer](https://github.com/joshstevens19/rindexer) sidecar polling Gnosis chain events into the shared Postgres
 - **Contracts** — Solidity (Foundry), deployed on Gnosis
 
 ## Contracts (Gnosis Chain)

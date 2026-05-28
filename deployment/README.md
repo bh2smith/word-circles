@@ -1,9 +1,10 @@
 # Backend Deployment (DAppNode)
 
-The backend runs as a DAppNode package with two services:
+The backend runs as a DAppNode package with three services:
 
+- **postgres** — Postgres 16 shared between the api and the indexer
 - **api** — Rust/Axum backend (pre-built Docker image)
-- **indexer** — [Arak](https://github.com/bh2smith/arak) sidecar polling Gnosis chain events
+- **indexer** — [rindexer](https://github.com/joshstevens19/rindexer) sidecar, polls Gnosis chain events and writes them straight into Postgres (no SQLite sidecar)
 
 ## Prerequisites
 
@@ -72,8 +73,9 @@ docker logs DAppNodePackage-word-circles.public.dappnode.eth-indexer
 Look for:
 
 - `Resolver wallet loaded` — confirms the private key is valid
-- `Event listener enabled (polling arak)` — confirms the indexer started
+- `Event listener enabled (polling rindexer)` — confirms the api's polling loop started
 - `Backend listening on 0.0.0.0:3001` — confirms the API is up
+- On the **indexer** container: rindexer's own startup banner + per-event sync messages
 
 ## Updating
 
@@ -82,30 +84,41 @@ Look for:
 3. Rebuild: `npx @dappnode/dappnodesdk build`
 4. Install the new package through the DAppNode admin UI
 
-Existing data (SQLite databases) persists across updates via the `data` volume.
+Game state lives in the `pgdata` volume (Postgres). There's no longer a shared SQLite volume — the indexer writes to the same Postgres as the api.
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────┐
-│ DAppNode                            │
-│                                     │
-│  ┌───────────┐    ┌──────────────┐  │
-│  │  indexer   │    │     api      │  │
-│  │  (arak)    │    │ (axum:3001)  │  │
-│  │            │    │              │  │
-│  │ polls RPC  │    │ serves game  │  │
-│  │ stores in  │───▶│ reads arak   │  │
-│  │ arak.db    │    │ events from  │  │
-│  │            │    │ arak.db      │  │
-│  └─────┬──────┘    └──────┬───────┘  │
-│        │                  │          │
-│        ▼                  ▼          │
-│    /data/arak.db    /data/wc.db      │
-│    (shared volume)                   │
-└─────────────────────────────────────┘
-         │                  │
-         ▼                  ▼
-   Gnosis Chain        Frontend
-   (events, txs)       (Vercel)
+┌─────────────────────────────────────────────────────────┐
+│ DAppNode                                                │
+│                                                         │
+│  ┌──────────────┐    ┌──────────────┐                   │
+│  │   indexer    │    │     api      │                   │
+│  │  (rindexer)  │    │ (axum:3001)  │                   │
+│  │              │    │              │                   │
+│  │ polls Gnosis │    │ serves game  │                   │
+│  │ RPC, writes  │    │ reads same   │                   │
+│  │ event tables │    │ Postgres for │                   │
+│  │ into shared  │    │ new events,  │                   │
+│  │ Postgres     │    │ writes app   │                   │
+│  │              │    │ state        │                   │
+│  └──────┬───────┘    └──────┬───────┘                   │
+│         │                   │                           │
+│         └────────┬──────────┘                           │
+│                  ▼                                      │
+│           ┌──────────────┐                              │
+│           │   postgres   │                              │
+│           │ wc_escrow.*  │  ← rindexer's event tables   │
+│           │ wc_stats.*   │                              │
+│           │ public.games │  ← app state                 │
+│           │ /players/... │                              │
+│           └──────────────┘                              │
+│                  │                                      │
+│                  ▼                                      │
+│              /var/lib/postgresql/data (pgdata volume)   │
+└─────────────────────────────────────────────────────────┘
+         │                          │
+         ▼                          ▼
+   Gnosis Chain                Frontend
+   (events, txs)               (Vercel)
 ```

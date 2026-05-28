@@ -1,7 +1,7 @@
 {
   "name": "word-circles.public.dappnode.eth",
-  "version": "0.5.1",
-  "upstreamVersion": "0.5.1",
+  "version": "0.6.0",
+  "upstreamVersion": "0.6.0",
   "shortDescription": "Word Circles game backend",
   "description": "Rust/Axum backend for the Word Circles game. Handles daily game creation, guess evaluation, and persistence via PostgreSQL.",
   "type": "service",
@@ -87,7 +87,7 @@
           "service": "api"
         },
         "title": "WordCirclesEscrow Contract Address",
-        "description": "Deployed WordCirclesEscrow contract address on Gnosis. Change here (a reconfigure, no republish) if the escrow is redeployed — but note the indexer's arak.toml still pins the address and is baked into the image.",
+        "description": "Deployed WordCirclesEscrow contract address on Gnosis. Change here (a reconfigure, no republish) if the escrow is redeployed — but note the indexer's rindexer.yaml is baked into the indexer image, so an address change there requires a package rebuild + republish.",
         "required": false,
         "default": "0x20a44c2C546FEBb4dcE773868B532D14663467A0"
       },
