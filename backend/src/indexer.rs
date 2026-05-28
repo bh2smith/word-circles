@@ -174,9 +174,10 @@ async fn read_new_events(pool: &PgPool, cursor: u64) -> Result<Vec<IndexedEvent>
     let mut events = Vec::new();
     let cursor_i64 = cursor as i64;
 
-    // Created — bytes32 game_id stored as BYTEA, capacity uint128 as NUMERIC
+    // Created — bytes32 game_id stored as BYTEA, capacity uint128 as NUMERIC.
+    // block_number is NUMERIC in rindexer's schema; cast to bigint for sqlx.
     match sqlx::query(
-        "SELECT block_number,
+        "SELECT block_number::bigint AS block_number,
                 '0x' || encode(game_id, 'hex') AS game_id,
                 player, capacity::text AS capacity, token, amount
          FROM wc_escrow.created
@@ -205,7 +206,7 @@ async fn read_new_events(pool: &PgPool, cursor: u64) -> Result<Vec<IndexedEvent>
     // Joined — LEFT JOIN created to recover the lobby capacity (Joined event
     // itself doesn't carry it).
     match sqlx::query(
-        "SELECT j.block_number,
+        "SELECT j.block_number::bigint AS block_number,
                 '0x' || encode(j.game_id, 'hex') AS game_id,
                 j.player,
                 j.players::bigint AS players,
@@ -234,7 +235,8 @@ async fn read_new_events(pool: &PgPool, cursor: u64) -> Result<Vec<IndexedEvent>
     }
 
     match sqlx::query(
-        "SELECT block_number, '0x' || encode(game_id, 'hex') AS game_id
+        "SELECT block_number::bigint AS block_number,
+                '0x' || encode(game_id, 'hex') AS game_id
          FROM wc_escrow.resolved
          WHERE block_number > $1
          ORDER BY block_number, log_index",
@@ -256,7 +258,8 @@ async fn read_new_events(pool: &PgPool, cursor: u64) -> Result<Vec<IndexedEvent>
 
     // GameRecorded — Stats schema; gameId is uint32, guesses uint8, won bool
     match sqlx::query(
-        "SELECT block_number, player, game_id, won, guesses
+        "SELECT block_number::bigint AS block_number,
+                player, game_id, won, guesses
          FROM wc_stats.game_recorded
          WHERE block_number > $1
          ORDER BY block_number, log_index",
