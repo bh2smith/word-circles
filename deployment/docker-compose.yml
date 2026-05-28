@@ -58,8 +58,10 @@ services:
     restart: unless-stopped
     # rindexer writes event tables directly into the shared Postgres — no
     # SQLite, no shared /data volume. Config + ABIs are baked into the image
-    # at /etc/rindexer (set as WORKDIR in the Dockerfile).
-    command: ["/app/rindexer", "start", "indexer"]
+    # at /etc/rindexer (set as WORKDIR in the Dockerfile). The image's
+    # ENTRYPOINT is already `/app/rindexer`, so `command:` must only contain
+    # arguments (not the binary path again).
+    command: ["start", "indexer"]
     environment:
       DATABASE_URL: postgres://wordcircles:wordcircles@postgres.word-circles.public.dappnode:5432/wordcircles
     depends_on:
