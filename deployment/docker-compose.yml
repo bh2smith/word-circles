@@ -58,7 +58,11 @@ services:
     restart: unless-stopped
     entrypoint: ["/usr/bin/tini", "--"]
     command: ["/opt/arak/arak"]
-    working_dir: /data
+    # arak.toml is baked into /etc/arak (outside the volume) so config updates
+    # actually propagate on image rebuild. arak.db stays in the /data volume
+    # via the absolute connection path inside arak.toml.
+    environment:
+      ARAKCONFIG: /etc/arak/arak.toml
     volumes:
       - data:/data
 

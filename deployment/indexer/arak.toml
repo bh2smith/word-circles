@@ -1,7 +1,9 @@
 ethrpc = "http://gnosis-erigon.dappnode:8545"
 
 [database.sqlite]
-connection = "file:arak.db"
+# Absolute path so arak.db lives in the /data volume regardless of arak's
+# cwd (arak sets cwd to the directory of its config file, which is now /etc/arak).
+connection = "file:/data/arak.db"
 
 [indexer]
 page-size = 1000
