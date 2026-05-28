@@ -1,3 +1,7 @@
+# Docker Compose v2+ treats `version` as obsolete, but the dappnodesdk
+# validator still requires it (otherwise: TypeError: Invalid Version: undefined.0).
+version: "3.8"
+
 services:
   postgres:
     build:
