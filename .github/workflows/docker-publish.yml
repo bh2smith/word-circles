@@ -68,7 +68,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
 
       # The git tag (e.g. v0.6.2) must match deployment/dappnode_package.json's
       # version, since the .xz and its api/Dockerfile FROM are pinned to it.
@@ -83,8 +83,11 @@ jobs:
           name="$(node -p "require('./dappnode_package.json').name")"
           echo "xz=deployment/build_${name}_${pkg}/${name}_${pkg}_linux-amd64.txz" >> "$GITHUB_ENV"
 
+      # --skip_upload builds and saves the .txz locally and skips the IPFS
+      # "Verify connection" task that otherwise fails in CI (no dappnode/IPFS
+      # node reachable). IPFS upload + sideload stay manual after download.
       - name: Build DAppNode package
-        run: npx @dappnode/dappnodesdk build
+        run: npx @dappnode/dappnodesdk build --skip_upload
 
       - name: Verify .xz exists
         id: artifact
