@@ -24,15 +24,17 @@ VERIFY_FLAG      := $(if $(GNOSISSCAN_API_KEY),--verify,)
 
 .PHONY: deploy deploy-escrow verify-all openapi release-ipfs
 
-# Upload a built DAppNode package release directory to IPFS and record the
-# resulting (installable) directory hash in deployment/releases.json. Needs VPN
-# to the dappnode (default IPFS_API) and a local build dir from `dappnodesdk
-# build` (or the CI artifact unpacked into deployment/build_<name>_<ver>/).
-# Review + commit the releases.json change afterward.
-#   make release-ipfs VERSION=0.6.2
-#   make release-ipfs VERSION=0.6.2 DIR=deployment/build_word-circles.public.dappnode.eth_0.6.2
+# Pin a tagged GitHub release to IPFS on the dappnode straight from its release
+# assets (manifest, compose, avatar, image .txz — attached by the docker-publish
+# CI workflow). Needs VPN to the dappnode (the default IPFS provider). The tag
+# v$(VERSION) must already be pushed and its CI run finished, so the four assets
+# are on the Release. Prints the installable directory CID; sideload it via the
+# DAppNode admin UI.
+#   make release-ipfs VERSION=0.6.3
+RELEASE_REPO ?= bh2smith/word-circles
 release-ipfs:
-	@VERSION=$(VERSION) DIR=$(DIR) IPFS_API=$(IPFS_API) deployment/upload-ipfs.sh
+	@test -n "$(VERSION)" || { echo "set VERSION, e.g. make release-ipfs VERSION=0.6.3" >&2; exit 1; }
+	npx @dappnode/dappnodesdk from_github $(RELEASE_REPO) -v v$(VERSION) --verbose
 
 # Refresh the committed OpenAPI snapshot from the backend, then regenerate the
 # frontend TypeScript types. Run after changing any API handler or schema.
