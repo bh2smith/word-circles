@@ -18,8 +18,11 @@
 DEPLOYER_ACCOUNT ?= deployer
 RESOLVER_ACCOUNT ?= resolver
 
-DEPLOYER_ADDRESS := $(shell cast wallet address --account $(DEPLOYER_ACCOUNT) 2>/dev/null)
-RESOLVER_ADDRESS := $(shell cast wallet address --account $(RESOLVER_ACCOUNT) 2>/dev/null)
+# Lazy (`=`, not `:=`) so `cast wallet address` — which prompts for the keystore
+# password — only runs when a deploy/verify target actually references these,
+# not on every `make` invocation (e.g. `make release-ipfs` or `make openapi`).
+DEPLOYER_ADDRESS = $(shell cast wallet address --account $(DEPLOYER_ACCOUNT) 2>/dev/null)
+RESOLVER_ADDRESS = $(shell cast wallet address --account $(RESOLVER_ACCOUNT) 2>/dev/null)
 VERIFY_FLAG      := $(if $(GNOSISSCAN_API_KEY),--verify,)
 
 .PHONY: deploy deploy-escrow verify-all openapi release-ipfs
