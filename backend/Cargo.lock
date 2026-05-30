@@ -4720,8 +4720,7 @@ checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
 [[package]]
 name = "safe-rs"
 version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1055616a0b68ed8ff352d2b6abd6c631e760f372ca322f10bac5428cb9139455"
+source = "git+https://github.com/bh2smith/safe-rs.git?branch=fix%2Fmultisend-delegatecall-gas-estimate#bd139d1d2e5e0f2d089798931b134deba3d722e9"
 dependencies = [
  "alloy",
  "alloy-primitives",
