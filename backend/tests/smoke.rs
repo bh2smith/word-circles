@@ -18,18 +18,17 @@ async fn json_body(resp: axum::response::Response) -> serde_json::Value {
     serde_json::from_slice(&bytes).unwrap()
 }
 
-/// The leaderboard endpoints read from rindexer's `wc_stats.game_recorded`,
-/// which the `#[sqlx::test]` migration harness doesn't create. Stand it up so
-/// the HTTP-level tests exercise the same on-chain source as production.
+/// The leaderboard endpoints read from arak's `game_recorded` table, which the
+/// `#[sqlx::test]` migration harness doesn't create. Stand it up matching arak's
+/// Postgres shape (bare `public` table, `{field}_{ordinal}` columns, addresses
+/// as BYTEA, uint* as NUMERIC) so the HTTP-level tests exercise the same on-chain
+/// source as production.
 async fn create_wc_stats(pool: &PgPool) {
-    sqlx::query("CREATE SCHEMA IF NOT EXISTS wc_stats")
-        .execute(pool)
-        .await
-        .unwrap();
     sqlx::query(
-        "CREATE TABLE wc_stats.game_recorded (
-           player CHAR(42), game_id INTEGER, won BOOLEAN,
-           guesses SMALLINT, block_number NUMERIC, log_index NUMERIC
+        "CREATE TABLE game_recorded (
+           player_0 BYTEA, gameid_1 NUMERIC, won_2 BOOLEAN,
+           guesses_3 NUMERIC, block_number BIGINT, log_index BIGINT,
+           transaction_index BIGINT, address BYTEA
          )",
     )
     .execute(pool)
@@ -47,12 +46,14 @@ async fn seed_game_recorded(
     block_number: i64,
     log_index: i64,
 ) {
+    // `player` is a 0x-prefixed 40-hex-char address; store it raw as BYTEA like arak.
+    let player_bytes = hex::decode(player.trim_start_matches("0x")).unwrap();
     sqlx::query(
-        "INSERT INTO wc_stats.game_recorded
-             (player, game_id, won, guesses, block_number, log_index)
+        "INSERT INTO game_recorded
+             (player_0, gameid_1, won_2, guesses_3, block_number, log_index)
          VALUES ($1, $2, $3, $4, $5, $6)",
     )
-    .bind(player)
+    .bind(&player_bytes)
     .bind(game_id as i32)
     .bind(won)
     .bind(guesses)

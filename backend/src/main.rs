@@ -60,7 +60,7 @@ async fn main() {
         }
     };
 
-    // Indexer: polls rindexer's event tables in the shared Postgres. Runs
+    // Indexer: polls arak's event tables in the shared Postgres. Runs
     // unconditionally — daily-leaderboard backfill via GameRecorded is useful
     // even when PvP is off; the PvP branches inside the loop are gated by
     // `pvp_enabled` themselves.
@@ -83,7 +83,7 @@ async fn main() {
             indexer::run(indexer_repo, indexer_pool, config).await;
         });
 
-        tracing::info!(poll_secs, "Event listener enabled (polling rindexer)");
+        tracing::info!(poll_secs, "Event listener enabled (polling arak)");
     }
 
     if pvp_enabled {

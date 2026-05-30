@@ -40,9 +40,9 @@ impl PostgresRepository {
         Self { pool }
     }
 
-    /// Borrow the underlying pool — used by the rindexer-event polling loop,
-    /// which reads from rindexer's `wc_escrow.*` / `wc_stats.*` tables in the
-    /// same database as the application schema.
+    /// Borrow the underlying pool — used by the arak-event polling loop, which
+    /// reads from arak's bare `public` event tables (created/joined/resolved/
+    /// game_recorded) in the same database as the application schema.
     pub fn pool(&self) -> PgPool {
         self.pool.clone()
     }
@@ -223,13 +223,13 @@ impl GameRepository for PostgresRepository {
         // is a tiebreak sort key only (earliest on-chain achiever wins) — not
         // surfaced in `LeaderboardEntry`.
         let rows: Vec<(String, i64, i64, f64, i64)> = match sqlx::query_as(
-            "SELECT trim(player)                                       AS address,
-                    COUNT(*) FILTER (WHERE won)                        AS wins,
+            "SELECT '0x' || encode(player_0, 'hex')                    AS address,
+                    COUNT(*) FILTER (WHERE won_2)                      AS wins,
                     COUNT(*)                                           AS games_played,
-                    COALESCE(AVG(guesses) FILTER (WHERE won), 0.0)::float8 AS avg_guesses,
-                    MIN(block_number::bigint)                          AS first_block
-             FROM wc_stats.game_recorded
-             GROUP BY trim(player)
+                    COALESCE(AVG(guesses_3) FILTER (WHERE won_2), 0.0)::float8 AS avg_guesses,
+                    MIN(block_number)                                  AS first_block
+             FROM game_recorded
+             GROUP BY player_0
              ORDER BY wins DESC, avg_guesses ASC, games_played DESC, first_block ASC, address ASC
              LIMIT $1 OFFSET $2",
         )
@@ -240,7 +240,7 @@ impl GameRepository for PostgresRepository {
         {
             Ok(rows) => rows,
             Err(e) if is_undefined_table(&e) => {
-                tracing::debug!("wc_stats.game_recorded not yet created: {e}");
+                tracing::debug!("game_recorded not yet created: {e}");
                 return Ok(vec![]);
             }
             Err(e) => return Err(RepositoryError::Internal(e.to_string())),
@@ -267,10 +267,12 @@ impl GameRepository for PostgresRepository {
         // One row per (player, game_id) on-chain, so no aggregation needed.
         // Tiebreak: solved first, fewer guesses, then earliest on-chain.
         let rows: Vec<(String, i16, bool)> = match sqlx::query_as(
-            "SELECT trim(player) AS address, guesses, won AS solved
-             FROM wc_stats.game_recorded
-             WHERE game_id = $1
-             ORDER BY won DESC, guesses ASC, block_number ASC, log_index ASC",
+            "SELECT '0x' || encode(player_0, 'hex') AS address,
+                    guesses_3::smallint AS guesses,
+                    won_2 AS solved
+             FROM game_recorded
+             WHERE gameid_1 = $1
+             ORDER BY won_2 DESC, guesses_3 ASC, block_number ASC, log_index ASC",
         )
         .bind(game_id)
         .fetch_all(&self.pool)
@@ -278,7 +280,7 @@ impl GameRepository for PostgresRepository {
         {
             Ok(rows) => rows,
             Err(e) if is_undefined_table(&e) => {
-                tracing::debug!("wc_stats.game_recorded not yet created: {e}");
+                tracing::debug!("game_recorded not yet created: {e}");
                 return Ok(vec![]);
             }
             Err(e) => return Err(RepositoryError::Internal(e.to_string())),
@@ -577,8 +579,8 @@ fn is_unique_violation(e: &sqlx::Error) -> bool {
     false
 }
 
-/// `42P01` — undefined table. rindexer creates `wc_stats.*` on its first poll,
-/// so the table can be absent on a fresh boot; treat that as "no data yet"
+/// `42P01` — undefined table. arak creates the `game_recorded` table on its
+/// first poll, so it can be absent on a fresh boot; treat that as "no data yet"
 /// rather than a 500 (mirrors `indexer.rs` swallowing the same condition).
 fn is_undefined_table(e: &sqlx::Error) -> bool {
     if let sqlx::Error::Database(db_err) = e {
@@ -861,19 +863,16 @@ mod tests {
         assert_eq!(active[0].id, "0xa1");
     }
 
-    /// The `#[sqlx::test]` harness only builds the app schema; rindexer's
-    /// `wc_stats` schema doesn't exist there. Create a minimal stand-in.
+    /// The `#[sqlx::test]` harness only builds the app schema; arak's
+    /// `game_recorded` table doesn't exist there. Create a stand-in matching
+    /// arak's Postgres shape: bare `public` table, `{field}_{ordinal}` columns,
+    /// addresses as BYTEA, uint* as NUMERIC, block_number/log_index as BIGINT.
     async fn create_wc_stats(pool: &PgPool) {
-        // Postgres's extended (prepared-statement) protocol rejects multiple
-        // commands in one query, so issue the schema/table creation separately.
-        sqlx::query("CREATE SCHEMA IF NOT EXISTS wc_stats")
-            .execute(pool)
-            .await
-            .unwrap();
         sqlx::query(
-            "CREATE TABLE wc_stats.game_recorded (
-               player CHAR(42), game_id INTEGER, won BOOLEAN,
-               guesses SMALLINT, block_number NUMERIC, log_index NUMERIC
+            "CREATE TABLE game_recorded (
+               player_0 BYTEA, gameid_1 NUMERIC, won_2 BOOLEAN,
+               guesses_3 NUMERIC, block_number BIGINT, log_index BIGINT,
+               transaction_index BIGINT, address BYTEA
              )",
         )
         .execute(pool)
@@ -881,6 +880,7 @@ mod tests {
         .unwrap();
     }
 
+    /// `player` is a `0x`-prefixed hex address; stored as raw BYTEA like arak.
     async fn seed_game_recorded(
         pool: &PgPool,
         player: &str,
@@ -890,12 +890,13 @@ mod tests {
         block_number: i64,
         log_index: i64,
     ) {
+        let player_bytes = decode_address(player);
         sqlx::query(
-            "INSERT INTO wc_stats.game_recorded
-                 (player, game_id, won, guesses, block_number, log_index)
+            "INSERT INTO game_recorded
+                 (player_0, gameid_1, won_2, guesses_3, block_number, log_index)
              VALUES ($1, $2, $3, $4, $5, $6)",
         )
-        .bind(player)
+        .bind(&player_bytes)
         .bind(game_id)
         .bind(won)
         .bind(guesses)

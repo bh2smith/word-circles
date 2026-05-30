@@ -4,7 +4,7 @@ The backend runs as a DAppNode package with three services:
 
 - **postgres** — Postgres 16 shared between the api and the indexer
 - **api** — Rust/Axum backend (pre-built Docker image)
-- **indexer** — [rindexer](https://github.com/joshstevens19/rindexer) sidecar, polls Gnosis chain events and writes them straight into Postgres (no SQLite sidecar)
+- **indexer** — [arak](https://github.com/bh2smith/arak) sidecar (own fork), polls Gnosis chain events and writes them straight into Postgres (no SQLite sidecar)
 
 ## Prerequisites
 
@@ -73,9 +73,9 @@ docker logs DAppNodePackage-word-circles.public.dappnode.eth-indexer
 Look for:
 
 - `Resolver wallet loaded` — confirms the private key is valid
-- `Event listener enabled (polling rindexer)` — confirms the api's polling loop started
+- `Event listener enabled (polling arak)` — confirms the api's polling loop started
 - `Backend listening on 0.0.0.0:3001` — confirms the API is up
-- On the **indexer** container: rindexer's own startup banner + per-event sync messages
+- On the **indexer** container: arak's own startup banner + per-event sync messages
 
 ## Updating
 
@@ -94,7 +94,7 @@ Game state lives in the `pgdata` volume (Postgres). There's no longer a shared S
 │                                                         │
 │  ┌──────────────┐    ┌──────────────┐                   │
 │  │   indexer    │    │     api      │                   │
-│  │  (rindexer)  │    │ (axum:3001)  │                   │
+│  │    (arak)    │    │ (axum:3001)  │                   │
 │  │              │    │              │                   │
 │  │ polls Gnosis │    │ serves game  │                   │
 │  │ RPC, writes  │    │ reads same   │                   │
@@ -108,8 +108,10 @@ Game state lives in the `pgdata` volume (Postgres). There's no longer a shared S
 │                  ▼                                      │
 │           ┌──────────────┐                              │
 │           │   postgres   │                              │
-│           │ wc_escrow.*  │  ← rindexer's event tables   │
-│           │ wc_stats.*   │                              │
+│           │ created/     │  ← arak's event tables       │
+│           │ joined/      │    (public schema)           │
+│           │ resolved/    │                              │
+│           │ game_recorded│                              │
 │           │ public.games │  ← app state                 │
 │           │ /players/... │                              │
 │           └──────────────┘                              │

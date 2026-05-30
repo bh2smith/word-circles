@@ -56,14 +56,14 @@ services:
       context: indexer
       dockerfile: Dockerfile
     restart: unless-stopped
-    # rindexer writes event tables directly into the shared Postgres — no
-    # SQLite, no shared /data volume. Config + ABIs are baked into the image
-    # at /etc/rindexer (set as WORKDIR in the Dockerfile). The image's
-    # ENTRYPOINT is already `/app/rindexer`, so `command:` must only contain
-    # arguments (not the binary path again).
-    command: ["start", "indexer"]
+    # arak writes event tables directly into the shared Postgres — no SQLite,
+    # no /data volume. The connection string lives inside arak.toml (baked into
+    # /etc/arak in the image), so no DATABASE_URL env is needed here. tini reaps
+    # the arak process for clean signal handling.
+    entrypoint: ["/usr/bin/tini", "--"]
+    command: ["/opt/arak/arak"]
     environment:
-      DATABASE_URL: postgres://wordcircles:wordcircles@postgres.word-circles.public.dappnode:5432/wordcircles
+      ARAKCONFIG: /etc/arak/arak.toml
     depends_on:
       postgres:
         condition: service_healthy

@@ -13,23 +13,24 @@ pub struct IndexerConfig {
     pub pvp_timeout_secs: u32,
 }
 
-/// Polls rindexer's event tables for new on-chain events and reacts to them.
-/// Rindexer (the sidecar) handles RPC polling, event decoding, reorg safety,
-/// and raw event storage into the shared Postgres. This loop just SELECTs from
-/// the `wc_escrow.*` and `wc_stats.*` schemas and updates application state.
+/// Polls arak's event tables for new on-chain events and reacts to them.
+/// arak (the sidecar) handles RPC polling, event decoding, reorg safety, and
+/// raw event storage into the shared Postgres. This loop just SELECTs from the
+/// bare `public` event tables (created/joined/resolved/game_recorded) and
+/// updates application state.
 pub async fn run<R: GameRepository>(repo: Arc<R>, pool: PgPool, config: IndexerConfig) {
     let mut cursor = repo.get_indexer_cursor().await.unwrap_or(0);
 
     tracing::info!(
         cursor,
-        "Event listener starting (polling rindexer Postgres tables)"
+        "Event listener starting (polling arak Postgres tables)"
     );
 
     loop {
         let events = match read_new_events(&pool, cursor).await {
             Ok(events) => events,
             Err(e) => {
-                tracing::warn!("Failed to read rindexer events: {e}");
+                tracing::warn!("Failed to read arak events: {e}");
                 tokio::time::sleep(config.poll_interval).await;
                 continue;
             }
@@ -167,20 +168,27 @@ impl IndexedEvent {
     }
 }
 
-/// Reads new events from rindexer's tables. Tables may not exist yet on first
-/// boot (rindexer creates them on its first poll); per-query errors are logged
-/// at debug and swallowed so the loop keeps trying.
+/// Reads new events from arak's tables. Tables may not exist yet on first boot
+/// (arak creates them on its first poll); per-query errors are logged at debug
+/// and swallowed so the loop keeps trying.
+///
+/// arak names columns `{field}_{ordinal}`, lowercased (e.g. `gameId` → `gameid_0`),
+/// stores `bytes32`/`address` as BYTEA and `uint*` as NUMERIC, and `block_number`
+/// as BIGINT — so addresses/hashes are hex-encoded here and numerics cast to
+/// text/bigint to match the existing `IndexedEvent` string/int fields.
 async fn read_new_events(pool: &PgPool, cursor: u64) -> Result<Vec<IndexedEvent>, sqlx::Error> {
     let mut events = Vec::new();
     let cursor_i64 = cursor as i64;
 
-    // Created — bytes32 game_id stored as BYTEA, capacity uint128 as NUMERIC.
-    // block_number is NUMERIC in rindexer's schema; cast to bigint for sqlx.
+    // Created — gameid_0/player_1/token_3 are BYTEA; amount_4/capacity_5 NUMERIC.
     match sqlx::query(
-        "SELECT block_number::bigint AS block_number,
-                '0x' || encode(game_id, 'hex') AS game_id,
-                player, capacity::text AS capacity, token, amount
-         FROM wc_escrow.created
+        "SELECT block_number,
+                '0x' || encode(gameid_0, 'hex') AS game_id,
+                '0x' || encode(player_1, 'hex') AS player,
+                capacity_5::text AS capacity,
+                '0x' || encode(token_3, 'hex') AS token,
+                amount_4::text AS amount
+         FROM created
          WHERE block_number > $1
          ORDER BY block_number, log_index",
     )
@@ -204,15 +212,16 @@ async fn read_new_events(pool: &PgPool, cursor: u64) -> Result<Vec<IndexedEvent>
     }
 
     // Joined — LEFT JOIN created to recover the lobby capacity (Joined event
-    // itself doesn't carry it).
+    // itself doesn't carry it). Joined's player is player_2 (gameid_0, creator_1,
+    // player_2, players_3); created's capacity is capacity_5.
     match sqlx::query(
-        "SELECT j.block_number::bigint AS block_number,
-                '0x' || encode(j.game_id, 'hex') AS game_id,
-                j.player,
-                j.players::bigint AS players,
-                COALESCE(c.capacity::bigint, 0) AS capacity
-         FROM wc_escrow.joined j
-         LEFT JOIN wc_escrow.created c ON c.game_id = j.game_id
+        "SELECT j.block_number,
+                '0x' || encode(j.gameid_0, 'hex') AS game_id,
+                '0x' || encode(j.player_2, 'hex') AS player,
+                j.players_3::bigint AS players,
+                COALESCE(c.capacity_5::bigint, 0) AS capacity
+         FROM joined j
+         LEFT JOIN created c ON c.gameid_0 = j.gameid_0
          WHERE j.block_number > $1
          ORDER BY j.block_number, j.log_index",
     )
@@ -235,9 +244,9 @@ async fn read_new_events(pool: &PgPool, cursor: u64) -> Result<Vec<IndexedEvent>
     }
 
     match sqlx::query(
-        "SELECT block_number::bigint AS block_number,
-                '0x' || encode(game_id, 'hex') AS game_id
-         FROM wc_escrow.resolved
+        "SELECT block_number,
+                '0x' || encode(gameid_0, 'hex') AS game_id
+         FROM resolved
          WHERE block_number > $1
          ORDER BY block_number, log_index",
     )
@@ -256,11 +265,14 @@ async fn read_new_events(pool: &PgPool, cursor: u64) -> Result<Vec<IndexedEvent>
         Err(e) => tracing::debug!("read resolved events: {e}"),
     }
 
-    // GameRecorded — Stats schema; gameId is uint32, guesses uint8, won bool
+    // GameRecorded — player_0 BYTEA, gameid_1/guesses_3 NUMERIC, won_2 BOOL.
     match sqlx::query(
-        "SELECT block_number::bigint AS block_number,
-                player, game_id, won, guesses
-         FROM wc_stats.game_recorded
+        "SELECT block_number,
+                '0x' || encode(player_0, 'hex') AS player,
+                gameid_1::bigint AS game_id,
+                won_2 AS won,
+                guesses_3::smallint AS guesses
+         FROM game_recorded
          WHERE block_number > $1
          ORDER BY block_number, log_index",
     )
@@ -273,7 +285,7 @@ async fn read_new_events(pool: &PgPool, cursor: u64) -> Result<Vec<IndexedEvent>
                 events.push(IndexedEvent::GameRecorded {
                     block_number: r.get::<i64, _>("block_number") as u64,
                     player: trim_addr(r.get::<String, _>("player")),
-                    game_id: r.get::<i32, _>("game_id") as u32,
+                    game_id: r.get::<i64, _>("game_id") as u32,
                     won: r.get::<bool, _>("won"),
                     guesses: r.get::<i16, _>("guesses") as u8,
                 });
@@ -286,8 +298,9 @@ async fn read_new_events(pool: &PgPool, cursor: u64) -> Result<Vec<IndexedEvent>
     Ok(events)
 }
 
-/// Address columns from rindexer are `CHAR(42)`, which Postgres can return
-/// space-padded depending on the driver. Trim defensively.
+/// arak stores addresses as raw BYTEA; we hex-encode them in SQL (`'0x' ||
+/// encode(...)`), so they arrive clean. Trim defensively anyway — cheap and
+/// guards against any driver padding.
 fn trim_addr(s: String) -> String {
     s.trim().to_string()
 }
