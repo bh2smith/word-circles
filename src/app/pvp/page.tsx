@@ -1,10 +1,9 @@
-import { redirect } from "next/navigation";
 import PvpGame from "@/components/PvpGame";
-import { PVP_ENABLED } from "@/lib/flags";
 
 export default function PvpPage() {
-  // Guard the route too, so a direct visit doesn't reach PvP while it's dark.
-  if (!PVP_ENABLED) redirect("/");
+  // No build-time gate: PvpGame reads the backend's /api/config at runtime and
+  // shows "PvP isn't available right now" when pvpEnabled is false, so a direct
+  // visit while PvP is dark degrades gracefully instead of redirecting.
   return (
     <main className="flex-1 flex items-center justify-center py-4">
       <PvpGame />

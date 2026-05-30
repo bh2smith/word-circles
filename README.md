@@ -46,4 +46,6 @@ cast wallet import resolver --interactive
 make deploy
 ```
 
-See `deployment/` for DAppNode packaging.
+See `deployment/` for DAppNode packaging, and **[RELEASE.md](RELEASE.md)** for the
+frontend (Vercel) / backend (DAppNode) release flow — how the two stay decoupled,
+the manual production-promote step, and turning on PvP without a redeploy.

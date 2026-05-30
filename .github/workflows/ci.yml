@@ -65,6 +65,39 @@ jobs:
       - name: Test
         run: cargo test
 
+  # The committed OpenAPI snapshot (src/lib/api/openapi.json) is the FE/BE
+  # contract; the frontend's TS types are generated from it. Regenerate it from
+  # the backend and fail if it drifts, so a backend handler change can't ship a
+  # frontend built against a stale contract. Mirrors `make openapi`.
+  openapi-drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install --frozen-lockfile
+
+      - name: Regenerate OpenAPI snapshot + TS types
+        run: |
+          cargo run --quiet --manifest-path backend/Cargo.toml --bin dump_openapi > src/lib/api/openapi.json
+          bun run gen:api
+
+      - name: Fail on drift
+        run: |
+          if ! git diff --exit-code -- src/lib/api/openapi.json src/lib/api/types.ts; then
+            echo "::error::OpenAPI snapshot/types are out of date. Run 'make openapi' and commit the result."
+            exit 1
+          fi
+
   contracts:
     runs-on: ubuntu-latest
     steps:

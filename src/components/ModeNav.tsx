@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { PVP_ENABLED } from "@/lib/flags";
+import { usePvpEnabled } from "@/lib/usePvpEnabled";
 
 const TABS = [
   { href: "/", label: "Daily" },
@@ -11,9 +11,11 @@ const TABS = [
 
 export default function ModeNav() {
   const pathname = usePathname();
-  // PvP hidden until the backend is live — no nav at all, so the app looks
-  // exactly like the daily-only version.
-  if (!PVP_ENABLED) return null;
+  const pvpEnabled = usePvpEnabled();
+  // PvP hidden until the backend reports it live — no nav at all, so the app
+  // looks exactly like the daily-only version. Stays hidden while loading
+  // (undefined) so we never flash a tab the backend can't serve.
+  if (!pvpEnabled) return null;
   return (
     <nav className="flex justify-center gap-2 pt-4">
       {TABS.map((t) => {
