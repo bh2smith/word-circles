@@ -219,30 +219,37 @@ impl GameRepository for PostgresRepository {
         limit: u32,
         offset: u32,
     ) -> Result<Vec<LeaderboardEntry>, RepositoryError> {
-        let rows: Vec<(Vec<u8>, i64, i64, f64)> = sqlx::query_as(
-            "SELECT p.address,
-                    SUM(CASE WHEN g.is_correct THEN 1 ELSE 0 END) AS wins,
-                    COUNT(DISTINCT g.game_id) AS games_played,
-                    COALESCE(
-                        AVG(CASE WHEN g.is_correct THEN g.guess_number + 1 END),
-                        0.0
-                    )::float8 AS avg_guesses
-             FROM guesses g
-             JOIN players p ON p.id = g.player_id
-             GROUP BY p.address
-             ORDER BY wins DESC, avg_guesses ASC, games_played DESC
+        // Ranked purely from indexed on-chain `GameRecorded` events. `first_block`
+        // is a tiebreak sort key only (earliest on-chain achiever wins) — not
+        // surfaced in `LeaderboardEntry`.
+        let rows: Vec<(String, i64, i64, f64, i64)> = match sqlx::query_as(
+            "SELECT trim(player)                                       AS address,
+                    COUNT(*) FILTER (WHERE won)                        AS wins,
+                    COUNT(*)                                           AS games_played,
+                    COALESCE(AVG(guesses) FILTER (WHERE won), 0.0)::float8 AS avg_guesses,
+                    MIN(block_number::bigint)                          AS first_block
+             FROM wc_stats.game_recorded
+             GROUP BY trim(player)
+             ORDER BY wins DESC, avg_guesses ASC, games_played DESC, first_block ASC, address ASC
              LIMIT $1 OFFSET $2",
         )
         .bind(limit as i64)
         .bind(offset as i64)
         .fetch_all(&self.pool)
         .await
-        .map_err(|e| RepositoryError::Internal(e.to_string()))?;
+        {
+            Ok(rows) => rows,
+            Err(e) if is_undefined_table(&e) => {
+                tracing::debug!("wc_stats.game_recorded not yet created: {e}");
+                return Ok(vec![]);
+            }
+            Err(e) => return Err(RepositoryError::Internal(e.to_string())),
+        };
 
         Ok(rows
             .into_iter()
             .map(|r| LeaderboardEntry {
-                address: encode_address(&r.0),
+                address: r.0.trim().to_lowercase(),
                 wins: r.1 as u32,
                 games_played: r.2 as u32,
                 avg_guesses: r.3,
@@ -251,25 +258,36 @@ impl GameRepository for PostgresRepository {
     }
 
     async fn get_daily_results(&self, game_id: &str) -> Result<Vec<DailyResult>, RepositoryError> {
-        let rows: Vec<(Vec<u8>, i32, bool)> = sqlx::query_as(
-            "SELECT p.address,
-                    MAX(g.guess_number) + 1 AS guesses,
-                    BOOL_OR(g.is_correct) AS solved
-             FROM guesses g
-             JOIN players p ON p.id = g.player_id
-             WHERE g.game_id = $1
-             GROUP BY p.address
-             ORDER BY solved DESC, guesses ASC",
+        // The handler passes a stringified `u32`; keep the `&str` signature but
+        // parse to `i64` for the `INTEGER game_id` column.
+        let game_id: i64 = game_id
+            .parse()
+            .map_err(|_| RepositoryError::Internal("invalid game_id".into()))?;
+
+        // One row per (player, game_id) on-chain, so no aggregation needed.
+        // Tiebreak: solved first, fewer guesses, then earliest on-chain.
+        let rows: Vec<(String, i16, bool)> = match sqlx::query_as(
+            "SELECT trim(player) AS address, guesses, won AS solved
+             FROM wc_stats.game_recorded
+             WHERE game_id = $1
+             ORDER BY won DESC, guesses ASC, block_number ASC, log_index ASC",
         )
         .bind(game_id)
         .fetch_all(&self.pool)
         .await
-        .map_err(|e| RepositoryError::Internal(e.to_string()))?;
+        {
+            Ok(rows) => rows,
+            Err(e) if is_undefined_table(&e) => {
+                tracing::debug!("wc_stats.game_recorded not yet created: {e}");
+                return Ok(vec![]);
+            }
+            Err(e) => return Err(RepositoryError::Internal(e.to_string())),
+        };
 
         Ok(rows
             .into_iter()
             .map(|r| DailyResult {
-                address: encode_address(&r.0),
+                address: r.0.trim().to_lowercase(),
                 guesses: r.1 as u32,
                 solved: r.2,
             })
@@ -559,6 +577,16 @@ fn is_unique_violation(e: &sqlx::Error) -> bool {
     false
 }
 
+/// `42P01` — undefined table. rindexer creates `wc_stats.*` on its first poll,
+/// so the table can be absent on a fresh boot; treat that as "no data yet"
+/// rather than a 500 (mirrors `indexer.rs` swallowing the same condition).
+fn is_undefined_table(e: &sqlx::Error) -> bool {
+    if let sqlx::Error::Database(db_err) = e {
+        return db_err.code().as_deref() == Some("42P01");
+    }
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::models::*;
@@ -831,5 +859,104 @@ mod tests {
         let active = repo.get_pvp_games_by_status("active").await.unwrap();
         assert_eq!(active.len(), 1);
         assert_eq!(active[0].id, "0xa1");
+    }
+
+    /// The `#[sqlx::test]` harness only builds the app schema; rindexer's
+    /// `wc_stats` schema doesn't exist there. Create a minimal stand-in.
+    async fn create_wc_stats(pool: &PgPool) {
+        // Postgres's extended (prepared-statement) protocol rejects multiple
+        // commands in one query, so issue the schema/table creation separately.
+        sqlx::query("CREATE SCHEMA IF NOT EXISTS wc_stats")
+            .execute(pool)
+            .await
+            .unwrap();
+        sqlx::query(
+            "CREATE TABLE wc_stats.game_recorded (
+               player CHAR(42), game_id INTEGER, won BOOLEAN,
+               guesses SMALLINT, block_number NUMERIC, log_index NUMERIC
+             )",
+        )
+        .execute(pool)
+        .await
+        .unwrap();
+    }
+
+    async fn seed_game_recorded(
+        pool: &PgPool,
+        player: &str,
+        game_id: i32,
+        won: bool,
+        guesses: i16,
+        block_number: i64,
+        log_index: i64,
+    ) {
+        sqlx::query(
+            "INSERT INTO wc_stats.game_recorded
+                 (player, game_id, won, guesses, block_number, log_index)
+             VALUES ($1, $2, $3, $4, $5, $6)",
+        )
+        .bind(player)
+        .bind(game_id)
+        .bind(won)
+        .bind(guesses)
+        .bind(block_number)
+        .bind(log_index)
+        .execute(pool)
+        .await
+        .unwrap();
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn leaderboard_from_onchain_orders_by_wins_then_earliest(pool: PgPool) {
+        create_wc_stats(&pool).await;
+        let early = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        let late = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+        // Both: 1 win, avg_guesses 3 — tied on wins + avg_guesses + games_played.
+        seed_game_recorded(&pool, late, 1, true, 3, 200, 0).await;
+        seed_game_recorded(&pool, early, 1, true, 3, 100, 0).await;
+
+        let repo = PostgresRepository::from_pool(pool);
+        let board = repo.get_leaderboard(50, 0).await.unwrap();
+
+        assert_eq!(board.len(), 2);
+        assert_eq!(
+            board[0].address, early,
+            "earliest on-chain achiever ranks first"
+        );
+        assert_eq!(board[1].address, late);
+        assert_eq!(board[0].wins, 1);
+        assert_eq!(board[0].avg_guesses, 3.0);
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn daily_from_onchain_solved_first(pool: PgPool) {
+        create_wc_stats(&pool).await;
+        let early = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        let late = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+        let loser = "0xcccccccccccccccccccccccccccccccccccccccc";
+        // Two solvers with equal guesses; lower block_number first.
+        seed_game_recorded(&pool, late, 7, true, 4, 200, 0).await;
+        seed_game_recorded(&pool, early, 7, true, 4, 100, 0).await;
+        // Unsolved row must sort last regardless of guesses/block.
+        seed_game_recorded(&pool, loser, 7, false, 6, 50, 0).await;
+
+        let repo = PostgresRepository::from_pool(pool);
+        let results = repo.get_daily_results("7").await.unwrap();
+
+        assert_eq!(results.len(), 3);
+        assert_eq!(results[0].address, early, "earliest solver first");
+        assert!(results[0].solved);
+        assert_eq!(results[1].address, late);
+        assert!(results[1].solved);
+        assert_eq!(results[2].address, loser, "unsolved sorts last");
+        assert!(!results[2].solved);
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn leaderboard_missing_table_returns_empty(pool: PgPool) {
+        // wc_stats schema is intentionally not created.
+        let repo = PostgresRepository::from_pool(pool);
+        assert!(repo.get_leaderboard(50, 0).await.unwrap().is_empty());
+        assert!(repo.get_daily_results("1").await.unwrap().is_empty());
     }
 }

@@ -18,6 +18,51 @@ async fn json_body(resp: axum::response::Response) -> serde_json::Value {
     serde_json::from_slice(&bytes).unwrap()
 }
 
+/// The leaderboard endpoints read from rindexer's `wc_stats.game_recorded`,
+/// which the `#[sqlx::test]` migration harness doesn't create. Stand it up so
+/// the HTTP-level tests exercise the same on-chain source as production.
+async fn create_wc_stats(pool: &PgPool) {
+    sqlx::query("CREATE SCHEMA IF NOT EXISTS wc_stats")
+        .execute(pool)
+        .await
+        .unwrap();
+    sqlx::query(
+        "CREATE TABLE wc_stats.game_recorded (
+           player CHAR(42), game_id INTEGER, won BOOLEAN,
+           guesses SMALLINT, block_number NUMERIC, log_index NUMERIC
+         )",
+    )
+    .execute(pool)
+    .await
+    .unwrap();
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn seed_game_recorded(
+    pool: &PgPool,
+    player: &str,
+    game_id: i64,
+    won: bool,
+    guesses: i16,
+    block_number: i64,
+    log_index: i64,
+) {
+    sqlx::query(
+        "INSERT INTO wc_stats.game_recorded
+             (player, game_id, won, guesses, block_number, log_index)
+         VALUES ($1, $2, $3, $4, $5, $6)",
+    )
+    .bind(player)
+    .bind(game_id as i32)
+    .bind(won)
+    .bind(guesses)
+    .bind(block_number)
+    .bind(log_index)
+    .execute(pool)
+    .await
+    .unwrap();
+}
+
 #[sqlx::test(migrations = "./migrations")]
 async fn health_check(pool: PgPool) {
     let resp = app(pool)
@@ -238,26 +283,18 @@ async fn leaderboard_empty(pool: PgPool) {
 
 #[sqlx::test(migrations = "./migrations")]
 async fn leaderboard_with_player_data(pool: PgPool) {
-    let app = app(pool);
-
-    let game_body = json_body(
-        app.clone()
-            .oneshot(Request::get("/api/game").body(Body::empty()).unwrap())
-            .await
-            .unwrap(),
+    create_wc_stats(&pool).await;
+    seed_game_recorded(
+        &pool,
+        "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        1,
+        true,
+        3,
+        100,
+        0,
     )
     .await;
-    let game_id = game_body["gameId"].as_u64().unwrap();
-
-    app.clone()
-        .oneshot(guess_request_with_player(
-            game_id,
-            "crane",
-            0,
-            "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        ))
-        .await
-        .unwrap();
+    let app = app(pool);
 
     let resp = app
         .oneshot(
@@ -277,6 +314,7 @@ async fn leaderboard_with_player_data(pool: PgPool) {
         "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     );
     assert_eq!(entries[0]["games_played"], 1);
+    assert_eq!(entries[0]["wins"], 1);
 }
 
 #[sqlx::test(migrations = "./migrations")]
@@ -371,26 +409,19 @@ async fn config_with_pvp_enabled(pool: PgPool) {
 
 #[sqlx::test(migrations = "./migrations")]
 async fn daily_leaderboard_with_results(pool: PgPool) {
-    let app = app(pool);
-
-    let game_body = json_body(
-        app.clone()
-            .oneshot(Request::get("/api/game").body(Body::empty()).unwrap())
-            .await
-            .unwrap(),
+    let game_id = 42;
+    create_wc_stats(&pool).await;
+    seed_game_recorded(
+        &pool,
+        "0xdddddddddddddddddddddddddddddddddddddddd",
+        game_id,
+        true,
+        1,
+        100,
+        0,
     )
     .await;
-    let game_id = game_body["gameId"].as_u64().unwrap();
-
-    app.clone()
-        .oneshot(guess_request_with_player(
-            game_id,
-            "crane",
-            0,
-            "0xdddddddddddddddddddddddddddddddddddddddd",
-        ))
-        .await
-        .unwrap();
+    let app = app(pool);
 
     let resp = app
         .oneshot(
@@ -410,6 +441,7 @@ async fn daily_leaderboard_with_results(pool: PgPool) {
         "0xdddddddddddddddddddddddddddddddddddddddd"
     );
     assert_eq!(results[0]["guesses"], 1);
+    assert_eq!(results[0]["solved"], true);
 }
 
 // --- PvP tests ---
