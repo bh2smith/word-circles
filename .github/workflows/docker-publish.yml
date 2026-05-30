@@ -49,17 +49,22 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # Build the DAppNode package (.xz) in CI and attach it to the GitHub Release,
-  # so a release is a downloadable artifact instead of a local build. The .xz is
+  # Build the DAppNode package in CI and attach the FULL release directory to the
+  # GitHub Release (manifest + compose + avatar + image .txz), so a release is a
+  # downloadable, installable bundle instead of a local build. The package is
   # built from the committed deployment/ as-is — its api/Dockerfile is
   # `FROM bh2smith/word-circles-backend:<version>`, so this runs after `docker`
-  # publishes that image. IPFS upload + DAppNode install stay manual (the .xz is
-  # sideloaded through the DAppNode admin UI).
+  # publishes that image.
+  #
+  # Attaching all four files (not just the .txz) is what lets a maintainer pin
+  # the release to IPFS straight from GitHub with:
+  #   dappnodesdk from_github bh2smith/word-circles -v v<version>
+  # IPFS pin + DAppNode install stay manual (needs VPN to the dappnode).
   dappnode-package:
     needs: docker
     runs-on: ubuntu-latest
     permissions:
-      contents: write # attach the .xz to the Release
+      contents: write # attach the release files to the Release
     defaults:
       run:
         working-directory: deployment
@@ -81,7 +86,9 @@ jobs:
             exit 1
           fi
           name="$(node -p "require('./dappnode_package.json').name")"
-          echo "xz=deployment/build_${name}_${pkg}/${name}_${pkg}_linux-amd64.txz" >> "$GITHUB_ENV"
+          dir="deployment/build_${name}_${pkg}"
+          echo "dir=${dir}" >> "$GITHUB_ENV"
+          echo "xz=${dir}/${name}_${pkg}_linux-amd64.txz" >> "$GITHUB_ENV"
 
       # --skip_upload builds and saves the .txz locally and skips the IPFS
       # "Verify connection" task that otherwise fails in CI (no dappnode/IPFS
@@ -89,23 +96,39 @@ jobs:
       - name: Build DAppNode package
         run: npx @dappnode/dappnodesdk build --skip_upload
 
-      - name: Verify .xz exists
+      # from_github pins the release assets as-is, so every file DAppNode needs to
+      # install must be present: the manifest, the resolved compose (with image:
+      # refs — not the build-based committed one), the avatar, and the image .txz.
+      - name: Verify release files exist
         id: artifact
         run: |
-          if [ ! -f "${GITHUB_WORKSPACE}/${xz}" ]; then
-            echo "::error::expected artifact not found: ${xz}"
-            find . -name '*_linux-amd64.txz'
+          missing=0
+          for f in dappnode_package.json docker-compose.yml avatar.png "$(basename "$xz")"; do
+            if [ ! -f "${GITHUB_WORKSPACE}/${dir}/${f}" ]; then
+              echo "::error::expected release file not found: ${dir}/${f}"
+              missing=1
+            fi
+          done
+          if [ "$missing" != 0 ]; then
+            find . -path '*/build_*' -maxdepth 3 -type f
             exit 1
           fi
+          echo "dir=${dir}" >> "$GITHUB_OUTPUT"
           echo "path=${xz}" >> "$GITHUB_OUTPUT"
 
       - name: Upload as workflow artifact
         uses: actions/upload-artifact@v4
         with:
           name: dappnode-package-${{ github.ref_name }}
-          path: ${{ steps.artifact.outputs.path }}
+          path: ${{ steps.artifact.outputs.dir }}
 
+      # Attach the four files individually (not the wrapping dir) so a from_github
+      # pin reconstructs the exact directory DAppNode installs from.
       - name: Attach to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ steps.artifact.outputs.path }}
+          files: |
+            ${{ steps.artifact.outputs.dir }}/dappnode_package.json
+            ${{ steps.artifact.outputs.dir }}/docker-compose.yml
+            ${{ steps.artifact.outputs.dir }}/avatar.png
+            ${{ steps.artifact.outputs.path }}
