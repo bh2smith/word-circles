@@ -22,7 +22,17 @@ DEPLOYER_ADDRESS := $(shell cast wallet address --account $(DEPLOYER_ACCOUNT) 2>
 RESOLVER_ADDRESS := $(shell cast wallet address --account $(RESOLVER_ACCOUNT) 2>/dev/null)
 VERIFY_FLAG      := $(if $(GNOSISSCAN_API_KEY),--verify,)
 
-.PHONY: deploy deploy-escrow verify-all openapi
+.PHONY: deploy deploy-escrow verify-all openapi release-ipfs
+
+# Upload a built DAppNode package release directory to IPFS and record the
+# resulting (installable) directory hash in deployment/releases.json. Needs VPN
+# to the dappnode (default IPFS_API) and a local build dir from `dappnodesdk
+# build` (or the CI artifact unpacked into deployment/build_<name>_<ver>/).
+# Review + commit the releases.json change afterward.
+#   make release-ipfs VERSION=0.6.2
+#   make release-ipfs VERSION=0.6.2 DIR=deployment/build_word-circles.public.dappnode.eth_0.6.2
+release-ipfs:
+	@VERSION=$(VERSION) DIR=$(DIR) IPFS_API=$(IPFS_API) deployment/upload-ipfs.sh
 
 # Refresh the committed OpenAPI snapshot from the backend, then regenerate the
 # frontend TypeScript types. Run after changing any API handler or schema.
