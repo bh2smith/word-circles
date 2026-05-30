@@ -1548,8 +1548,7 @@ dependencies = [
 [[package]]
 name = "circles-abis"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f69fb55ef9614800cc08f15413cce56233feca7aeb9857f3f53b05570b224025"
+source = "git+https://github.com/deluXtreme/circles-rs.git?branch=fix%2Fsafe-runner-local-signing#822a52000830b6300927153fee9d946fdd8b0553"
 dependencies = [
  "alloy-contract",
  "alloy-sol-types",
@@ -1558,8 +1557,7 @@ dependencies = [
 [[package]]
 name = "circles-pathfinder"
 version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1ad4ab42442ce846a4a34e655afffc14e3d92ef595d3679b0308564694732bc2"
+source = "git+https://github.com/deluXtreme/circles-rs.git?branch=fix%2Fsafe-runner-local-signing#822a52000830b6300927153fee9d946fdd8b0553"
 dependencies = [
  "alloy-contract",
  "alloy-primitives",
@@ -1576,8 +1574,7 @@ dependencies = [
 [[package]]
 name = "circles-profiles"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ba561aeb4b4614b4c6df88049e32c4c899eaa5c9b6a07a911c110718854baa41"
+source = "git+https://github.com/deluXtreme/circles-rs.git?branch=fix%2Fsafe-runner-local-signing#822a52000830b6300927153fee9d946fdd8b0553"
 dependencies = [
  "circles-types",
  "reqwest 0.12.28",
@@ -1591,8 +1588,7 @@ dependencies = [
 [[package]]
 name = "circles-rpc"
 version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fb447b412953cd3183743c472d7989866a409984ecc8e63ab50f26c354066ffe"
+source = "git+https://github.com/deluXtreme/circles-rs.git?branch=fix%2Fsafe-runner-local-signing#822a52000830b6300927153fee9d946fdd8b0553"
 dependencies = [
  "alloy-json-rpc",
  "alloy-primitives",
@@ -1612,8 +1608,7 @@ dependencies = [
 [[package]]
 name = "circles-sdk"
 version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "534198b697f7dcc59b92686e0662b82663d695fc90f39ebb8adf5230e19046a5"
+source = "git+https://github.com/deluXtreme/circles-rs.git?branch=fix%2Fsafe-runner-local-signing#822a52000830b6300927153fee9d946fdd8b0553"
 dependencies = [
  "alloy-contract",
  "alloy-network",
@@ -1642,8 +1637,7 @@ dependencies = [
 [[package]]
 name = "circles-transfers"
 version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "986178dc135da9b90dc0e8bcaa1660161b941d7fe306cc10e3a48ca9492a887d"
+source = "git+https://github.com/deluXtreme/circles-rs.git?branch=fix%2Fsafe-runner-local-signing#822a52000830b6300927153fee9d946fdd8b0553"
 dependencies = [
  "alloy-primitives",
  "alloy-provider",
@@ -1663,8 +1657,7 @@ dependencies = [
 [[package]]
 name = "circles-types"
 version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0873d3cae50c642709ff66da715fa5be9761f4c51e03b4d79a34149f4f100975"
+source = "git+https://github.com/deluXtreme/circles-rs.git?branch=fix%2Fsafe-runner-local-signing#822a52000830b6300927153fee9d946fdd8b0553"
 dependencies = [
  "alloy-json-abi",
  "alloy-primitives",
@@ -1678,8 +1671,7 @@ dependencies = [
 [[package]]
 name = "circles-utils"
 version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f2c11039d3904bafe90ade848d3c2dc2e526696ed8dd1c927ebe478b6428e708"
+source = "git+https://github.com/deluXtreme/circles-rs.git?branch=fix%2Fsafe-runner-local-signing#822a52000830b6300927153fee9d946fdd8b0553"
 dependencies = [
  "alloy-primitives",
  "num-bigint",

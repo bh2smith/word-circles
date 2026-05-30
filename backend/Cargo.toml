@@ -37,10 +37,17 @@ tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
 sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "postgres"] }
 
-# Temporary: override safe-rs 0.9.0 (pulled transitively via circles-sdk) with a
-# fork that fixes MultiSend batch gas estimation. Without it, the bot's batched
-# Safe txs revert at gas estimation ("MultiSend should only be called via
-# delegatecall"). Upstream fix: https://github.com/tynes/safe-rs/pull/3
-# Remove this patch once that merges and a fixed safe-rs is published.
+# Temporary fork overrides for the bot's Safe transaction path. Remove each once
+# its fix is merged + published upstream.
+#
+# safe-rs: fixes MultiSend batch gas estimation — without it batched Safe txs
+# revert at gas estimation ("MultiSend should only be called via delegatecall").
+# Upstream: https://github.com/tynes/safe-rs/pull/3
+#
+# circles-sdk: signs the Safe/EOA runner's sends locally. Without it the runner
+# uses a wallet-less provider and emits eth_sendTransaction, which public RPCs
+# reject ("-32000: eth_sendTransaction not implemented").
+# Upstream: https://github.com/deluXtreme/circles-rs/pull (fix/safe-runner-local-signing)
 [patch.crates-io]
 safe-rs = { git = "https://github.com/bh2smith/safe-rs.git", branch = "fix/multisend-delegatecall-gas-estimate" }
+circles-sdk = { git = "https://github.com/deluXtreme/circles-rs.git", branch = "fix/safe-runner-local-signing" }
