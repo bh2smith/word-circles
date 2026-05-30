@@ -2,9 +2,15 @@
 //!
 //! Fills lonely lobbies so a solo player can always find a match: it watches
 //! for `waiting` PvP games that have sat past a join delay and joins the same
-//! escrow lobby (approve + join), then plays the game to completion through
-//! the normal game state. The bot runs in-process alongside the indexer and
-//! settlement loop, behind `BOT_ENABLED`.
+//! escrow lobby (approving the escrow for the stake token once, then `join`),
+//! then plays the game to completion through the normal game state. The bot runs
+//! in-process alongside the indexer and settlement loop, behind `BOT_ENABLED`.
+//!
+//! Approve and join are sent as separate single-call Safe transactions, never a
+//! MultiSend batch — see `approve_and_join` for why (a safe-rs 0.9.0 batch
+//! gas-estimation bug). Granting the escrow an allowance out-of-band (e.g. a
+//! one-time max approval from the Safe) means the steady-state join is a single
+//! `join` call.
 //!
 //! The bot plays as a Circles account (a Safe) controlled by an owner EOA, so
 //! it appears on-chain as a real Circles avatar — exactly like a human playing
@@ -18,6 +24,7 @@ use crate::words::ANSWERS;
 use alloy::{
     primitives::{Address, U256},
     sol,
+    sol_types::SolCall,
 };
 use circles_sdk::{ContractRunner, SafeContractRunner, SubmittedTx, call_to_tx};
 use rand::Rng;
@@ -28,6 +35,7 @@ use std::time::Duration;
 sol! {
     interface IERC20 {
         function approve(address spender, uint256 value) external returns (bool);
+        function allowance(address owner, address spender) external view returns (uint256);
     }
 
     interface IEscrow {
@@ -96,17 +104,56 @@ impl BotClient {
         self.runner.sender_address()
     }
 
-    /// Approves the escrow for the stake and joins the lobby in one batch. The
-    /// escrow pairs the bot into the waiting game via its lobby counter.
-    async fn approve_and_join(&self) -> Result<Vec<SubmittedTx>, String> {
-        let approve = call_to_tx(
+    /// Current ERC20 allowance the bot Safe has granted the escrow for the stake
+    /// token, read via the runner's provider.
+    async fn escrow_allowance(&self) -> Result<U256, String> {
+        let tx = call_to_tx(
             self.token,
-            IERC20::approveCall {
+            IERC20::allowanceCall {
+                owner: self.address(),
                 spender: self.escrow,
-                value: self.amount,
             },
             None,
         );
+        let bytes = self.runner.call(tx).await.map_err(|e| e.to_string())?;
+        let allowance = IERC20::allowanceCall::abi_decode_returns(&bytes)
+            .map_err(|e| format!("decode allowance: {e}"))?;
+        Ok(allowance)
+    }
+
+    /// Joins the waiting lobby, approving the escrow for the stake first only when
+    /// the standing allowance is insufficient. The escrow pairs the bot into the
+    /// game via its lobby counter.
+    ///
+    /// Approve and join are sent as SEPARATE single-call Safe transactions rather
+    /// than one MultiSend batch: safe-rs 0.9.0's batch path estimates gas as a
+    /// plain CALL into MultiSend (dropping the required DELEGATECALL), which the
+    /// MultiSend guard reverts ("MultiSend should only be called via
+    /// delegatecall"). Single-call submissions use Operation::Call and avoid that
+    /// path entirely. In steady state the allowance is already set, so the bot
+    /// only sends `join` and never touches the batch path at all.
+    async fn approve_and_join(&self) -> Result<Vec<SubmittedTx>, String> {
+        let mut submitted = Vec::new();
+
+        if self.escrow_allowance().await? < self.amount {
+            // Approve once with the max so future joins skip this branch (and the
+            // MultiSend path). Sent on its own — not batched with join.
+            let approve = call_to_tx(
+                self.token,
+                IERC20::approveCall {
+                    spender: self.escrow,
+                    value: U256::MAX,
+                },
+                None,
+            );
+            submitted.extend(
+                self.runner
+                    .send_transactions(vec![approve])
+                    .await
+                    .map_err(|e| e.to_string())?,
+            );
+        }
+
         let join = call_to_tx(
             self.escrow,
             IEscrow::joinCall {
@@ -117,10 +164,13 @@ impl BotClient {
             },
             None,
         );
-        self.runner
-            .send_transactions(vec![approve, join])
-            .await
-            .map_err(|e| e.to_string())
+        submitted.extend(
+            self.runner
+                .send_transactions(vec![join])
+                .await
+                .map_err(|e| e.to_string())?,
+        );
+        Ok(submitted)
     }
 }
 
@@ -318,5 +368,17 @@ mod tests {
             }
             assert!(solved, "bot failed to solve {answer}");
         }
+    }
+
+    // Guards the allowance read in approve_and_join: the runner returns raw return
+    // bytes, and we rely on abi_decode_returns yielding the U256 value so the
+    // `allowance < amount` branch (which decides whether to skip the approve, and
+    // thus the broken MultiSend path) is correct.
+    #[test]
+    fn allowance_return_decodes_to_u256() {
+        let value = U256::from(1_000_000_000_000_000_000u128);
+        let encoded = IERC20::allowanceCall::abi_encode_returns(&value);
+        let decoded = IERC20::allowanceCall::abi_decode_returns(&encoded).unwrap();
+        assert_eq!(decoded, value);
     }
 }
