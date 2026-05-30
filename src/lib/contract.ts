@@ -1,4 +1,10 @@
-import { createPublicClient, encodeFunctionData, http, parseAbi } from "viem";
+import {
+  createPublicClient,
+  encodeFunctionData,
+  getAddress,
+  http,
+  parseAbi,
+} from "viem";
 import { gnosis } from "viem/chains";
 
 export const STATS_CONTRACT =
@@ -31,6 +37,32 @@ export function encodeRecordGame(
 // escrow pairs joiners into games and emits Created/Joined for the indexer.
 export const erc20Abi = parseAbi([
   "function approve(address spender, uint256 amount) returns (bool)",
+  "function balanceOf(address account) view returns (uint256)",
+]);
+
+// Circles v2 Hub. groupMint contributes personal CRC (ERC1155) as collateral and
+// mints the group token (ERC1155 gCRC); wrap converts that into the static ERC20
+// (s-gCRC) that the escrow stakes. type 1 = Inflationary/static (CIRCLES_TYPE_INFLATION
+// in WordCirclesEscrow). The (group, type=1) wrapper is already deployed and equals
+// PVP_TOKEN, so we never need wrap()'s return value — approve() targets PVP_TOKEN.
+export const HUB_ADDRESS =
+  "0xc12C1E50ABB450d6205Ea2C3Fa861b3B834d13e8" as const;
+
+export const hubAbi = parseAbi([
+  "function groupMint(address group, address[] collateral, uint256[] amounts, bytes data)",
+  "function wrap(address avatar, uint256 amount, uint8 circlesType) returns (address)",
+  "function isHuman(address avatar) view returns (bool)",
+  "function day(uint256 timestamp) view returns (uint64)",
+  "function balanceOf(address account, uint256 id) view returns (uint256)",
+]);
+
+// The static ERC20 wrapper (s-gCRC == PVP_TOKEN) exposes the same demurrage math
+// the Hub uses, so we convert a static stake into the demurraged amount groupMint/
+// wrap expect at the current day rather than re-deriving the daily factor.
+export const wrapperAbi = parseAbi([
+  "function convertInflationaryToDemurrageValue(uint256 value, uint64 day) view returns (uint256)",
+  "function convertDemurrageToInflationaryValue(uint256 value, uint64 day) view returns (uint256)",
+  "function avatar() view returns (address)",
 ]);
 
 export const escrowAbi = parseAbi([
@@ -61,6 +93,106 @@ export function encodeJoin(
       BigInt(capacity),
     ],
   });
+}
+
+const CIRCLES_TYPE_INFLATION = 1;
+
+export function encodeGroupMint(
+  group: string,
+  collateral: string[],
+  amounts: bigint[],
+  data: `0x${string}` = "0x",
+): string {
+  return encodeFunctionData({
+    abi: hubAbi,
+    functionName: "groupMint",
+    args: [
+      group as `0x${string}`,
+      collateral as `0x${string}`[],
+      amounts,
+      data,
+    ],
+  });
+}
+
+export function encodeWrap(avatar: string, amount: bigint): string {
+  return encodeFunctionData({
+    abi: hubAbi,
+    functionName: "wrap",
+    args: [avatar as `0x${string}`, amount, CIRCLES_TYPE_INFLATION],
+  });
+}
+
+// The group avatar that mints `token` (s-gCRC). Read from the wrapper itself so
+// we don't need to plumb the group address through /api/config or env.
+export async function getTokenAvatar(token: string): Promise<string> {
+  return publicClient.readContract({
+    address: token as `0x${string}`,
+    abi: wrapperAbi,
+    functionName: "avatar",
+  });
+}
+
+export async function getErc20Balance(
+  token: string,
+  account: string,
+): Promise<bigint> {
+  return publicClient.readContract({
+    address: token as `0x${string}`,
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: [account as `0x${string}`],
+  });
+}
+
+// A player's own personal CRC, held in the Hub as ERC1155 with tokenId =
+// uint160(avatar). Used to tell "no CRC at all" apart from "has CRC but the group
+// won't mint it" when the lift can't produce the stake token.
+export async function getPersonalCrcBalance(player: string): Promise<bigint> {
+  const id = BigInt(getAddress(player));
+  return publicClient.readContract({
+    address: HUB_ADDRESS,
+    abi: hubAbi,
+    functionName: "balanceOf",
+    args: [player as `0x${string}`, id],
+  });
+}
+
+// Convert a static (inflationary) stake into the demurraged amount groupMint/wrap
+// expect at the current day. Both conversions floor, so the naive round-trip can
+// land 1 wei short of the stake (verified on a fork). We bump the demurraged
+// amount until wrapping it back yields >= `staticAmount`, so the minted s-gCRC
+// always covers the stake; callers approve exactly `staticAmount` and keep the dust.
+export async function staticToDemurrage(
+  token: string,
+  staticAmount: bigint,
+): Promise<bigint> {
+  const timestamp = BigInt(Math.floor(Date.now() / 1000));
+  const day = await publicClient.readContract({
+    address: HUB_ADDRESS,
+    abi: hubAbi,
+    functionName: "day",
+    args: [timestamp],
+  });
+  let demurraged = await publicClient.readContract({
+    address: token as `0x${string}`,
+    abi: wrapperAbi,
+    functionName: "convertInflationaryToDemurrageValue",
+    args: [staticAmount, day],
+  });
+  // One read-back; bump by the static deficit (which is sub-static-wei, so a
+  // single correction always closes the gap) until the wrap covers the stake.
+  for (let i = 0; i < 4; i++) {
+    const roundTrip = await publicClient.readContract({
+      address: token as `0x${string}`,
+      abi: wrapperAbi,
+      functionName: "convertDemurrageToInflationaryValue",
+      args: [demurraged, day],
+    });
+    if (roundTrip >= staticAmount) break;
+    demurraged += staticAmount - roundTrip;
+  }
+  return demurraged;
 }
 
 export async function hasPlayerPlayed(

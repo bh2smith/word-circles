@@ -14,6 +14,7 @@ import {
   subscribeWallet,
   getConnectedAddress,
   joinPvpGame,
+  NoCirclesError,
 } from "@/lib/circles";
 import { encodeApprove, encodeJoin } from "@/lib/contract";
 import type {
@@ -153,11 +154,26 @@ export default function PvpGame() {
       const joinData = encodeJoin(resolver, token, stake, capacity);
       const before = await fetchActiveGames(walletAddress);
       beforeIdsRef.current = new Set(before.map((g) => g.gameId));
-      await joinPvpGame(escrowAddress, token, approveData, joinData);
+      // Passing player + stake lets joinPvpGame mint the stake token from the
+      // player's personal CRC when they don't already hold enough s-gCRC.
+      await joinPvpGame({
+        escrow: escrowAddress,
+        token,
+        approveData,
+        joinData,
+        player: walletAddress,
+        stake,
+      });
       setPhase("discovering");
     } catch (err) {
       console.error("PvP join failed:", err);
-      setToast("Couldn't join — transaction rejected or reverted");
+      if (err instanceof NoCirclesError) {
+        setToast(
+          "You need Circles (CRC) to play PvP — none found in this wallet",
+        );
+      } else {
+        setToast("Couldn't join — transaction rejected or reverted");
+      }
       setPhase(null);
     }
   }, [config, walletAddress, fetchActiveGames]);

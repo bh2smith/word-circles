@@ -4,8 +4,19 @@ import {
   isMiniappMode,
   onWalletChange,
   sendTransactions,
+  type Transaction,
 } from "@aboutcircles/miniapp-sdk";
 import { getAddress } from "viem";
+import {
+  encodeApprove,
+  encodeGroupMint,
+  encodeWrap,
+  getErc20Balance,
+  getPersonalCrcBalance,
+  getTokenAvatar,
+  HUB_ADDRESS,
+  staticToDemurrage,
+} from "./contract";
 
 export { isMiniappMode };
 
@@ -50,21 +61,73 @@ export async function submitGameResult(
   ]);
 }
 
-// Enter PvP matchmaking: approve the escrow for the stake and call join() in a
-// single batched submission (join does safeTransferFrom, so approval must come
-// first). The escrow assigns the gameId on-chain; discover it afterwards via
+export class NoCirclesError extends Error {
+  constructor() {
+    super("no-circles");
+    this.name = "NoCirclesError";
+  }
+}
+
+export interface JoinPvpParams {
+  escrow: string;
+  token: string;
+  approveData: string;
+  joinData: string;
+  // Player address and static stake. When provided and the player holds < stake
+  // of the group token (s-gCRC), we prepend groupMint + wrap to mint it from their
+  // personal CRC. Omit to skip the lift (assumes the player already holds enough).
+  player?: string;
+  stake?: bigint;
+}
+
+// Enter PvP matchmaking in a single batched submission. If the player lacks the
+// stake token, the batch is [groupMint, wrap, approve, join]; otherwise just
+// [approve, join] (join does safeTransferFrom, so approval must come first). The
+// (group, type=1) wrapper is already deployed and equals `token`, so approve can
+// target it directly without reading wrap()'s return value. The group avatar is
+// read from the token itself (token.avatar()), so no extra config is needed. The
+// escrow assigns the gameId on-chain; discover it afterwards via
 // GET /api/games?player=<address>.
-export async function joinPvpGame(
-  escrow: string,
-  token: string,
-  approveData: string,
-  joinData: string,
-) {
+//
+// Throws NoCirclesError if the player holds neither the stake token nor any
+// personal CRC the group can mint — i.e. they can't play.
+export async function joinPvpGame(params: JoinPvpParams) {
+  const { escrow, token, approveData, joinData, player, stake } = params;
+
+  const lift: Transaction[] = [];
+  if (player && stake !== undefined) {
+    const held = await getErc20Balance(token, player);
+    if (held < stake) {
+      // Need to mint the shortfall from personal CRC. If the player has none, the
+      // lift can't succeed and they can't play — surface that distinctly.
+      const personal = await getPersonalCrcBalance(player);
+      if (personal === BigInt(0)) throw new NoCirclesError();
+
+      const group = await getTokenAvatar(token);
+      // groupMint/wrap operate in demurraged units; convert the static stake.
+      // The wallet supplies the player's own personal CRC as collateral, so the
+      // host fills collateral selection; we mint into the group and wrap to s-gCRC.
+      const wrapAmount = await staticToDemurrage(token, stake);
+      lift.push(
+        {
+          to: HUB_ADDRESS,
+          data: encodeGroupMint(group, [player], [wrapAmount]),
+          value: "0x0",
+        },
+        { to: HUB_ADDRESS, data: encodeWrap(group, wrapAmount), value: "0x0" },
+      );
+    }
+  }
+
   return sendTransactions([
+    ...lift,
     { to: token, data: approveData, value: "0x0" },
     { to: escrow, data: joinData, value: "0x0" },
   ]);
 }
+
+// Re-exported so call sites build the approve calldata without a second import.
+export { encodeApprove };
 
 export interface CirclesProfile {
   name: string;
