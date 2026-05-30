@@ -7,6 +7,7 @@ import { usePvpEnabled } from "@/lib/usePvpEnabled";
 const TABS = [
   { href: "/", label: "Daily" },
   { href: "/pvp", label: "PvP" },
+  { href: "/pvp/history", label: "History" },
 ] as const;
 
 export default function ModeNav() {
@@ -19,6 +20,7 @@ export default function ModeNav() {
   return (
     <nav className="flex justify-center gap-2 pt-4">
       {TABS.map((t) => {
+        // Exact match, so /pvp/history doesn't also light up the /pvp tab.
         const active = pathname === t.href;
         return (
           <Link

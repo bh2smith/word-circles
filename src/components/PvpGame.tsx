@@ -90,8 +90,26 @@ export default function PvpGame() {
       .catch(() => setConfig(null))
       .finally(() => setConfigLoaded(true));
 
+    // A ?game=<id> param (e.g. from the history page) re-enters that specific
+    // game. If it matches the locally-saved game we restore its guesses too;
+    // otherwise we enter with an empty board and let polling derive the live
+    // phase (a settled game lands on the results view, an ongoing one on the
+    // board). Falls back to the locally-saved in-progress game.
+    const requested =
+      typeof window !== "undefined"
+        ? new URLSearchParams(window.location.search).get("game")
+        : null;
     const saved = loadSaved();
-    if (saved && saved.gameId) {
+
+    if (requested) {
+      setGameId(requested);
+      if (saved && saved.gameId === requested) {
+        setGuesses(saved.guesses);
+        setPhase(saved.phase === "finished" ? "finished" : "playing");
+      } else {
+        setPhase("waiting"); // polling re-derives the real phase
+      }
+    } else if (saved && saved.gameId) {
       setGameId(saved.gameId);
       setGuesses(saved.guesses);
       // submitting/discovering are transient — resume into the waiting screen
@@ -223,7 +241,14 @@ export default function PvpGame() {
       const g: PvpGameResponse = await res.json();
       if (!active) return;
       setGame(g);
-      if (phase === "waiting" && g.status === "active") setPhase("playing");
+      const isSettled = g.status === "settled" || g.status === "completed";
+      // A re-entered or already-finished game that's settled jumps straight to
+      // the results view; otherwise an opponent arriving promotes us to playing.
+      if (isSettled) {
+        if (phase !== "finished") setPhase("finished");
+      } else if (phase === "waiting" && g.status === "active") {
+        setPhase("playing");
+      }
     };
 
     tick();
