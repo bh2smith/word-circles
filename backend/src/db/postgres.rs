@@ -497,7 +497,7 @@ impl GameRepository for PostgresRepository {
              FROM game_players gp
              JOIN games g ON g.id = gp.game_id
              WHERE gp.address = $1 AND g.game_type = 'pvp'
-               AND ($2 = false OR g.status IN ('waiting', 'active'))
+               AND ($2 = false OR g.status IN ('waiting', 'open', 'active'))
              ORDER BY g.created_at DESC
              LIMIT 20",
         )
@@ -828,6 +828,11 @@ mod tests {
         waiting.status = "waiting".into();
         repo.create_game(&waiting).await.unwrap();
 
+        // "open" = playable but lobby not yet full; must count as in-progress.
+        let mut open = pvp_game("0xopen");
+        open.status = "open".into();
+        repo.create_game(&open).await.unwrap();
+
         let mut settled = pvp_game("0xsettled");
         settled.status = "settled".into();
         repo.create_game(&settled).await.unwrap();
@@ -837,16 +842,23 @@ mod tests {
 
         let p = repo.get_or_create_player(addr).await.unwrap();
         repo.add_game_player("0xwaiting", p.id, addr).await.unwrap();
+        repo.add_game_player("0xopen", p.id, addr).await.unwrap();
         repo.add_game_player("0xsettled", p.id, addr).await.unwrap();
         repo.add_game_player("99", p.id, addr).await.unwrap();
 
         let all = repo.get_games_by_player(addr, false).await.unwrap();
-        assert_eq!(all.len(), 2, "both pvp games, daily excluded");
+        assert_eq!(all.len(), 3, "all pvp games, daily excluded");
         assert!(all.iter().all(|g| g.game_type == "pvp"));
 
         let active = repo.get_games_by_player(addr, true).await.unwrap();
-        assert_eq!(active.len(), 1, "only the waiting game is in progress");
-        assert_eq!(active[0].id, "0xwaiting");
+        assert_eq!(
+            active.len(),
+            2,
+            "waiting + open are in progress, settled is not"
+        );
+        let active_ids: Vec<&str> = active.iter().map(|g| g.id.as_str()).collect();
+        assert!(active_ids.contains(&"0xwaiting"));
+        assert!(active_ids.contains(&"0xopen"));
 
         let other = repo
             .get_games_by_player("0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", false)

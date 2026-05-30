@@ -209,8 +209,11 @@ async fn post_guess<R: GameRepository>(
     let is_pvp = game_record.game_type == "pvp";
 
     if is_pvp {
-        if game_record.status != "active" {
-            return err_response(StatusCode::BAD_REQUEST, "Game is not active");
+        // "open" = word committed, lobby not yet full but playable; "active" =
+        // full. Both accept guesses. Anything else (waiting/settled/completed) does
+        // not.
+        if game_record.status != "open" && game_record.status != "active" {
+            return err_response(StatusCode::BAD_REQUEST, "Game is not playable");
         }
 
         let address = match &req.player {

@@ -49,24 +49,38 @@ pub async fn run<R: GameRepository>(repo: Arc<R>, pool: PgPool, config: IndexerC
                     tracing::info!(game_id, block_number, player, capacity, "Created");
                     if config.pvp_enabled {
                         let cap: u32 = capacity.parse().unwrap_or(2);
+                        // Create as "open": the word is committed immediately so the
+                        // creator can start guessing before the lobby fills. It only
+                        // becomes "active" (settlement-eligible) once players ==
+                        // capacity — settlement/timeout loops operate on "active" so a
+                        // half-full game is never resolved on-chain (which would revert
+                        // NotStarted).
                         let record = GameRecord {
                             id: game_id.clone(),
                             game_type: "pvp".into(),
                             word_index: 0,
                             salt: None,
                             commitment: None,
-                            status: "waiting".into(),
+                            status: "open".into(),
                             created_at: String::new(),
                             capacity: Some(cap),
                             token: Some(token.clone()),
                             amount: Some(amount.clone()),
                             timeout_secs: Some(config.pvp_timeout_secs),
                         };
-                        if let Err(e) = repo.create_game(&record).await {
-                            match e {
-                                RepositoryError::Conflict(_) => {}
-                                _ => tracing::error!(game_id, "Failed to create PvP game: {e}"),
+                        match repo.create_game(&record).await {
+                            Ok(()) => {
+                                // Commit the word now so the creator can play while
+                                // waiting for an opponent.
+                                let repo = Arc::clone(&repo);
+                                let game_id = game_id.clone();
+                                let resolver = config.resolver.clone();
+                                tokio::spawn(async move {
+                                    prepare_pvp_game(repo, &game_id, resolver, "open").await;
+                                });
                             }
+                            Err(RepositoryError::Conflict(_)) => {}
+                            Err(e) => tracing::error!(game_id, "Failed to create PvP game: {e}"),
                         }
                     }
                 }
@@ -84,12 +98,12 @@ pub async fn run<R: GameRepository>(repo: Arc<R>, pool: PgPool, config: IndexerC
                         }
                     }
                     if *players == *capacity && config.pvp_enabled {
-                        let repo = Arc::clone(&repo);
-                        let game_id = game_id.clone();
-                        let resolver = config.resolver.clone();
-                        tokio::spawn(async move {
-                            prepare_pvp_game(repo, &game_id, resolver).await;
-                        });
+                        // Lobby full: the word was already committed when the game
+                        // was Created ("open"), so just promote it to "active" so the
+                        // settlement and timeout loops pick it up.
+                        if let Err(e) = repo.update_game_status(game_id, "active").await {
+                            tracing::error!(game_id, "Failed to activate full PvP game: {e}");
+                        }
                     }
                 }
                 IndexedEvent::Resolved {
@@ -372,6 +386,7 @@ async fn prepare_pvp_game<R: GameRepository>(
     repo: Arc<R>,
     game_id: &str,
     resolver: Option<Arc<ResolverClient>>,
+    status: &str,
 ) {
     let word_index = game::random_word_index();
     let salt = game::generate_salt();
@@ -384,7 +399,7 @@ async fn prepare_pvp_game<R: GameRepository>(
             word_index,
             &hex::encode(salt),
             &hex::encode(commitment),
-            "active",
+            status,
         )
         .await
     {

@@ -203,10 +203,13 @@ async fn fill_waiting_lobbies<R: GameRepository>(
     config: &BotConfig,
     attempted: &mut HashSet<String>,
 ) {
-    let waiting = match repo.get_pvp_games_by_status("waiting").await {
+    // Games are created as "open" (word committed, lobby not yet full) so the
+    // creator can start immediately; the bot fills these once they've sat past
+    // the join delay.
+    let waiting = match repo.get_pvp_games_by_status("open").await {
         Ok(g) => g,
         Err(e) => {
-            tracing::warn!("bot: failed to list waiting games: {e}");
+            tracing::warn!("bot: failed to list open games: {e}");
             return;
         }
     };

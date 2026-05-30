@@ -57,6 +57,12 @@ function loadSaved(): SavedPvp | null {
   }
 }
 
+// A PvP game is playable once the word is committed. "open" means the lobby
+// isn't full yet but the creator can already guess; "active" means it's full.
+function isPlayable(status: string | undefined): boolean {
+  return status === "open" || status === "active";
+}
+
 export default function PvpGame() {
   const [config, setConfig] = useState<ContractConfig | null>(null);
   const [configLoaded, setConfigLoaded] = useState(false);
@@ -212,7 +218,10 @@ export default function PvpGame() {
       if (chosen) {
         setGameId(chosen.gameId);
         setGame(chosen);
-        setPhase(chosen.status === "active" ? "playing" : "waiting");
+        // "open" (word committed, lobby not yet full) is already playable, so go
+        // straight into the room; the "waiting for opponent" state is shown as a
+        // banner over the board rather than a blocking screen.
+        setPhase(isPlayable(chosen.status) ? "playing" : "waiting");
       } else if (Date.now() - startedAt > 60_000) {
         setToast("Couldn't find your game yet — it may still be pending.");
         setPhase(null);
@@ -245,10 +254,11 @@ export default function PvpGame() {
       setGame(g);
       const isSettled = g.status === "settled" || g.status === "completed";
       // A re-entered or already-finished game that's settled jumps straight to
-      // the results view; otherwise an opponent arriving promotes us to playing.
+      // the results view; otherwise the word committing (status -> "open" on
+      // first join, or "active" once full) promotes us to playing.
       if (isSettled) {
         if (phase !== "finished") setPhase("finished");
-      } else if (phase === "waiting" && g.status === "active") {
+      } else if (phase === "waiting" && isPlayable(g.status)) {
         setPhase("playing");
       }
     };
@@ -548,6 +558,16 @@ export default function PvpGame() {
       {Header}
 
       <OpponentStatus opponent={opponent} settled={settled} />
+
+      {phase === "playing" && game?.status === "open" && (
+        <div className="w-full max-w-lg rounded-lg bg-neutral-800/80 px-4 py-2 text-center text-sm text-neutral-300">
+          <span className="inline-flex items-center gap-2">
+            <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+            Get a head start — still finding you an opponent. Your guesses
+            count.
+          </span>
+        </div>
+      )}
 
       {phase === "finished" && (
         <div className="text-center">
