@@ -13,11 +13,13 @@
 -- max_streak = longest streak ever.
 --
 -- Player names are read from an uploaded CSV table
--- (dune.bh2smith.dataset_word_circles_player_names) mapping lowercase address
--- -> Circles profile name. Previously these were resolved live via http_post
--- to rpc.aboutcircles.com (one request per player), which tripped Dune's
--- per-execution HTTP request cap. To refresh names, re-run the offline
--- resolver (../scripts/refresh_player_names.sh) and re-upload the CSV.
+-- (dune.bh2smith.dataset_word_circles_player_names) mapping address (varbinary)
+-- -> Circles profile name. Dune's CSV upload infers the 0x-hex `player` column
+-- as varbinary, so it joins directly against the on-chain `player`. Previously
+-- these were resolved live via http_post to rpc.aboutcircles.com (one request
+-- per player), which tripped Dune's per-execution HTTP request cap. To refresh
+-- names, re-run the offline resolver (../scripts/refresh_player_names.sh) and
+-- re-upload the CSV.
 
 WITH all_games AS (
   SELECT player, gameId, guesses, won, evt_block_time
@@ -73,7 +75,7 @@ player_aggs AS (
   GROUP BY player
 ),
 player_profiles AS (
-  -- Uploaded CSV table: columns (player varchar lowercase 0x-address, name varchar)
+  -- Uploaded CSV table: columns (player varbinary address, name varchar)
   SELECT
     player AS player_addr,
     name   AS circles_name
@@ -96,7 +98,7 @@ SELECT
   pa.last_played_at
 FROM player_aggs pa
 LEFT JOIN streak_stats ss ON ss.player = pa.player
-LEFT JOIN player_profiles pp ON pp.player_addr = '0x' || lower(to_hex(pa.player))
+LEFT JOIN player_profiles pp ON pp.player_addr = pa.player
 ORDER BY
   COALESCE(ss.max_streak, 0) DESC,
   pa.wins DESC,

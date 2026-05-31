@@ -8,11 +8,13 @@
 -- so the board auto-rolls each day without a parameter.
 --
 -- Player names are read from an uploaded CSV table
--- (dune.bh2smith.dataset_word_circles_player_names) mapping lowercase address
--- -> Circles profile name. Previously these were resolved live via http_post
--- to rpc.aboutcircles.com (one request per player), which can trip Dune's
--- per-execution HTTP request cap. To refresh names, re-run the offline
--- resolver (../scripts/refresh_player_names.sh) and re-upload the CSV.
+-- (dune.bh2smith.dataset_word_circles_player_names) mapping address (varbinary)
+-- -> Circles profile name. Dune's CSV upload infers the 0x-hex `player` column
+-- as varbinary, so it joins directly against the on-chain `player`. Previously
+-- these were resolved live via http_post to rpc.aboutcircles.com (one request
+-- per player), which can trip Dune's per-execution HTTP request cap. To refresh
+-- names, re-run the offline resolver (../scripts/refresh_player_names.sh) and
+-- re-upload the CSV.
 
 WITH latest AS (
   SELECT MAX(gameId) AS gid
@@ -42,7 +44,7 @@ ranked AS (
   FROM day_games
 ),
 player_profiles AS (
-  -- Uploaded CSV table: columns (player varchar lowercase 0x-address, name varchar)
+  -- Uploaded CSV table: columns (player varbinary address, name varchar)
   SELECT
     player AS player_addr,
     name   AS circles_name
@@ -62,5 +64,5 @@ SELECT
   ROUND(r.seconds_from_utc_midnight / 60.0, 1)      AS minutes_from_utc_midnight,
   r.evt_tx_hash                                     AS tx_hash
 FROM ranked r
-LEFT JOIN player_profiles p ON p.player_addr = '0x' || lower(to_hex(r.player))
+LEFT JOIN player_profiles p ON p.player_addr = r.player
 ORDER BY r.place ASC
