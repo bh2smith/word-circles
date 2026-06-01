@@ -381,4 +381,54 @@ mod tests {
         let decoded = IERC20::allowanceCall::abi_decode_returns(&encoded).unwrap();
         assert_eq!(decoded, value);
     }
+
+    // Manual, real-broadcast smoke test for the bot's Safe send path. Builds the
+    // BotClient from env and actually submits approve_and_join, so it exercises
+    // the exact signing/broadcast that the circles-sdk fixes addressed
+    // (eth_sendRawTransaction with populated nonce/gas/fees).
+    //
+    // #[ignore] so CI never runs it. Run against an ANVIL FORK of Gnosis to avoid
+    // real funds / filling a live lobby:
+    //   anvil --fork-url https://rpc.gnosischain.com --port 8545
+    //   RPC_URL=http://localhost:8545 \
+    //   BOT_PRIVATE_KEY=0x... BOT_SAFE_ADDRESS=0x335D5a9adA218A2b334c5E17242D15158e7380f9 \
+    //   ESCROW_ADDRESS=0x20a44c2C546FEBb4dcE773868B532D14663467A0 \
+    //   PVP_TOKEN=0xeeF7B1f06B092625228C835Dd5D5B14641D1e54A \
+    //   PVP_AMOUNT=1000000000000000000 PVP_CAPACITY=2 \
+    //   RESOLVER_ADDRESS=0x8ba11AdD9bB5B60028eff90A14f0AE20b429ce8F \
+    //   cargo test -p word-circles-backend bot_join_once -- --ignored --nocapture
+    //
+    // Pointing RPC_URL at real Gnosis instead makes a real on-chain join (stakes
+    // PVP_AMOUNT into the matching lobby) — do that only intentionally.
+    #[tokio::test]
+    #[ignore = "real-broadcast smoke test; run manually against an anvil fork"]
+    async fn bot_join_once() {
+        let resolver: Address = std::env::var("RESOLVER_ADDRESS")
+            .expect("set RESOLVER_ADDRESS")
+            .parse()
+            .expect("RESOLVER_ADDRESS must be a valid 0x address");
+
+        let client = BotClient::from_env(resolver)
+            .await
+            .expect("BotClient::from_env failed (check BOT_*/ESCROW/PVP_* env)");
+        eprintln!("bot Safe: 0x{:x}", client.address());
+
+        let txs = client
+            .approve_and_join()
+            .await
+            .expect("approve_and_join failed");
+
+        for (i, tx) in txs.iter().enumerate() {
+            eprintln!(
+                "tx[{i}] hash=0x{} success={}",
+                hex::encode(&tx.tx_hash),
+                tx.success
+            );
+        }
+        assert!(!txs.is_empty(), "no transactions were submitted");
+        assert!(
+            txs.iter().all(|t| t.success),
+            "a submitted transaction reverted"
+        );
+    }
 }
