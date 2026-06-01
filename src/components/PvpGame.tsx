@@ -7,6 +7,7 @@ import Toast from "./Toast";
 import HintPanel from "./HintPanel";
 import OpponentStatus from "./OpponentStatus";
 import PvpResults from "./PvpResults";
+import { formatUnits } from "viem";
 import type { GuessResult, LetterResult } from "@/lib/game";
 import { WORD_LENGTH } from "@/lib/game";
 import {
@@ -419,10 +420,9 @@ export default function PvpGame() {
 
   const stakeLabel = (() => {
     try {
-      // Show whole-token stake (Circles tokens are 18 decimals).
-      const wei = BigInt(config!.amount!);
-      const whole = wei / BigInt("1000000000000000000");
-      return `${whole} CRC`;
+      // Circles tokens are 18 decimals. formatUnits keeps fractional stakes
+      // (e.g. "0.1 CRC") instead of integer-dividing sub-1 amounts to "0 CRC".
+      return `${formatUnits(BigInt(config!.amount!), 18)} CRC`;
     } catch {
       return "the entry stake";
     }
