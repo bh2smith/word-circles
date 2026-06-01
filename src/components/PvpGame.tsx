@@ -294,7 +294,11 @@ export default function PvpGame() {
           guess: currentGuess,
           gameId,
           guessNumber: guesses.length,
-          player: walletAddress ?? undefined,
+          // Lowercase: the backend stores player addresses lowercase and (on the
+          // currently-deployed version) matches them exactly, so a checksummed
+          // address is rejected as "Not a player in this game". Lowercasing also
+          // passes the case-insensitive match once the backend fix ships.
+          player: walletAddress?.toLowerCase() ?? undefined,
         }),
       });
       const data: GuessResponse & Partial<ErrorResponse> = await res.json();
