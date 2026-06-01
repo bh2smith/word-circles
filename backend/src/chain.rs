@@ -201,13 +201,18 @@ impl ResolverClient {
         winners: &[Address],
         amounts: &[U256],
     ) -> Result<Bytes, ChainError> {
-        // abi.encode(gameId, winners, amounts) — matches Solidity's encoding
+        // abi.encode(gameId, winners, amounts). Use abi_encode_params, NOT
+        // abi_encode: for a multi-value tuple with dynamic members, abi_encode
+        // wraps it and prepends a 0x20 offset, so its keccak differs from
+        // Solidity's `abi.encode(a, b, c)`. The contract recovers against the
+        // unwrapped encoding, so abi_encode here makes the signature recover to
+        // the wrong address (InvalidSignature on resolve).
         let encoded = (
             FixedBytes::<32>::from(game_id),
             winners.to_vec(),
             amounts.to_vec(),
         )
-            .abi_encode();
+            .abi_encode_params();
         let hash = keccak256(&encoded);
 
         // sign_message applies the EIP-191 prefix, matching
@@ -305,8 +310,16 @@ mod tests {
             .await
             .unwrap();
 
-        // Reconstruct the hash the same way the contract does
-        let encoded = (game_id, winners.clone(), amounts.clone()).abi_encode();
+        // Reconstruct the hash the way the CONTRACT does: abi.encode(...) ==
+        // abi_encode_params (no wrapping offset). The encoding must start with the
+        // gameId, not a 0x20 offset — guarding against a regression to abi_encode,
+        // which would make the on-chain recover reject with InvalidSignature.
+        let encoded = (game_id, winners.clone(), amounts.clone()).abi_encode_params();
+        assert_eq!(
+            &encoded[..32],
+            game_id.as_slice(),
+            "abi.encode must start with gameId (no leading offset)"
+        );
         let hash = keccak256(&encoded);
 
         let sig = alloy::signers::Signature::try_from(sig_bytes.as_ref()).unwrap();
