@@ -2,49 +2,33 @@
 
 CSV datasets uploaded to Dune and read by the queries in `../queries`.
 
-Both CSVs below target the **same** Dune table,
-`dune.<handle>.dataset_word_circles_player_names` (handle `bh2smith`). Whichever
-you upload last wins — re-uploading with the same dataset name overwrites. The
-`player` column is lowercase `0x` hex, which Dune's CSV import infers as
-`varbinary`, so it joins directly against the on-chain `player` address.
+## `circles_profile_names.csv` → `dune.<handle>.dataset_word_circles_player_names`
 
-The table replaced a per-player `http_post` to `rpc.aboutcircles.com` in the
-leaderboard queries ([7608038](https://dune.com/queries/7608038),
-[7608035](https://dune.com/queries/7608035)), which tripped Dune's
-per-execution HTTP request cap ("too many HTTP requests").
+Maps a Circles avatar's lowercase `0x` address to its display `name` (~9.5k
+named avatars): humans' off-chain profile names plus on-chain group/org names.
+The `player` column is `0x` hex, which Dune's CSV import infers as `varbinary`,
+so it joins directly against the on-chain `player` address.
 
-## `circles_profile_names.csv` — comprehensive (current upload)
+Read by the leaderboard queries
+[`../queries/03_global_leaderboard_streaks.sql`](../queries/03_global_leaderboard_streaks.sql)
+([7608038](https://dune.com/queries/7608038)) and
+[`../queries/01_daily_leaderboard.sql`](../queries/01_daily_leaderboard.sql)
+([7608035](https://dune.com/queries/7608035)). It replaced a per-player
+`http_post` to `rpc.aboutcircles.com`, which tripped Dune's per-execution HTTP
+request cap ("too many HTTP requests").
 
-Every Circles avatar that has a name (~9.5k rows): humans' off-chain profile
-names plus on-chain group/organization names. This is the dataset currently
-backing the table, so any future player is resolved without a re-scrape.
-
-Built by [`../scripts/build_circles_names.py`](../scripts/build_circles_names.py):
+### Rebuild
 
 ```sh
 python3 dune/scripts/build_circles_names.py   # rewrites circles_profile_names.csv
 ```
 
-It lists all avatars via `circles_query` (V_CrcV2.Avatars) and resolves human
+It lists all avatars via `circles_query` (`V_CrcV2.Avatars`) and resolves human
 display names from their profile CIDs via `profiles/getBatch` (50 CIDs/request,
 retried over several passes since IPFS fetches transiently fail — coverage is a
 good majority, not 100%).
 
-## `player_names.csv` — Word Circles players only (seed)
-
-The 22 addresses that have played Word Circles, mapped to their Circles name.
-Smaller, exact seed used by
-[`../scripts/refresh_player_names.sh`](../scripts/refresh_player_names.sh) and
-merged into the comprehensive set to guarantee every actual player is covered.
-
-```sh
-# resolve names offline and rewrite player_names.csv
-DUNE_API_KEY=… ./dune/scripts/refresh_player_names.sh
-# or feed addresses directly (no API key needed):
-#   ./dune/scripts/refresh_player_names.sh 0xabc… 0xdef…
-```
-
-## Uploading
+### Upload
 
 Via the API (overwrites on matching `table_name`):
 

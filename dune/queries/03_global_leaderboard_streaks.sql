@@ -18,7 +18,7 @@
 -- as varbinary, so it joins directly against the on-chain `player`. Previously
 -- these were resolved live via http_post to rpc.aboutcircles.com (one request
 -- per player), which tripped Dune's per-execution HTTP request cap. To refresh
--- names, re-run the offline resolver (../scripts/refresh_player_names.sh) and
+-- names, re-run the offline resolver (../scripts/build_circles_names.py) and
 -- re-upload the CSV.
 
 WITH all_games AS (

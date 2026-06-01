@@ -14,8 +14,8 @@ name at all are dropped.
 
 The CSV feeds the Dune uploaded table `dune.<handle>.dataset_word_circles_player_names`
 (column `player` is 0x-hex, which Dune infers as varbinary so it joins directly
-against on-chain player addresses). Upload with dune/scripts/refresh_player_names.sh
-or the API (POST /api/v1/uploads/csv).
+against on-chain player addresses). Upload with the Dune API
+(POST /api/v1/uploads/csv) or the web UI (Upload Data).
 
 Usage:
   python3 dune/scripts/build_circles_names.py
