@@ -7,6 +7,7 @@ import Toast from "./Toast";
 import HintPanel from "./HintPanel";
 import OpponentStatus from "./OpponentStatus";
 import PvpResults from "./PvpResults";
+import PlayerProfile from "./PlayerProfile";
 import { formatUnits } from "viem";
 import type { GuessResult, LetterResult } from "@/lib/game";
 import { WORD_LENGTH } from "@/lib/game";
@@ -54,10 +55,6 @@ function loadSaved(): SavedPvp | null {
   } catch {
     return null;
   }
-}
-
-function truncate(addr: string): string {
-  return addr.length <= 10 ? addr : `${addr.slice(0, 6)}...${addr.slice(-4)}`;
 }
 
 export default function PvpGame() {
@@ -448,9 +445,10 @@ export default function PvpGame() {
   const Header = (
     <div className="flex flex-col items-center gap-1">
       {title}
-      <p className="text-neutral-500 text-xs font-mono">
-        {truncate(walletAddress)}
-      </p>
+      <PlayerProfile
+        address={walletAddress}
+        className="text-neutral-300 text-xs"
+      />
     </div>
   );
 

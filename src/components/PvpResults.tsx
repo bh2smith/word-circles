@@ -1,13 +1,9 @@
 "use client";
 
 import Board from "./Board";
-import { circlesProfileUrl } from "@/lib/circles";
+import PlayerProfile from "./PlayerProfile";
 import type { GuessResult, LetterResult } from "@/lib/game";
 import type { PvpTranscript, PvpTranscriptPlayer } from "@/lib/api";
-
-function truncate(addr: string): string {
-  return addr.length <= 10 ? addr : `${addr.slice(0, 6)}...${addr.slice(-4)}`;
-}
 
 function toGuesses(p: PvpTranscriptPlayer): GuessResult[] {
   return p.guesses.map((g) => ({
@@ -44,16 +40,12 @@ function PlayerColumn({
         highlight ? "ring-2 ring-green-500 bg-green-500/5" : "bg-neutral-800/40"
       }`}
     >
-      <div className="text-center">
+      <div className="flex flex-col items-center">
         <p className="font-semibold">{title}</p>
-        <a
-          href={circlesProfileUrl(player.address)}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="font-mono text-neutral-500 hover:text-green-400 text-xs transition-colors"
-        >
-          {truncate(player.address)}
-        </a>
+        <PlayerProfile
+          address={player.address}
+          className="text-neutral-300 text-xs"
+        />
       </div>
       <Board guesses={toGuesses(player)} currentGuess="" shake={false} />
       <p className="text-sm text-neutral-400">
