@@ -32,6 +32,16 @@ export type WalletListener = (address: string | null) => void;
 const listeners: Set<WalletListener> = new Set();
 let currentAddress: string | null = null;
 let initialized = false;
+let sessionReported = false;
+
+function reportMiniappSession(wallet: string) {
+  fetch("/api/event", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ wallet, kind: "miniapp_open" }),
+    keepalive: true,
+  }).catch(() => {});
+}
 
 export function initCircles() {
   if (initialized) return;
@@ -44,6 +54,10 @@ export function initCircles() {
       currentAddress = address ? getAddress(address) : null;
     } catch {
       currentAddress = null;
+    }
+    if (currentAddress && !sessionReported) {
+      sessionReported = true;
+      reportMiniappSession(currentAddress);
     }
     listeners.forEach((fn) => fn(currentAddress));
   });

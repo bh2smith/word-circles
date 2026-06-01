@@ -570,6 +570,17 @@ impl GameRepository for PostgresRepository {
             })
             .collect())
     }
+
+    async fn record_event(&self, wallet: &str, kind: &str) -> Result<(), RepositoryError> {
+        let wallet_bytes = decode_address(wallet);
+        sqlx::query("INSERT INTO events (wallet, kind) VALUES ($1, $2)")
+            .bind(&wallet_bytes)
+            .bind(kind)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| RepositoryError::Internal(e.to_string()))?;
+        Ok(())
+    }
 }
 
 fn is_unique_violation(e: &sqlx::Error) -> bool {

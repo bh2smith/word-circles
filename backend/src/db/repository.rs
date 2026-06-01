@@ -134,4 +134,12 @@ pub trait GameRepository: Send + Sync + 'static {
         &self,
         status: &str,
     ) -> impl Future<Output = Result<Vec<GameRecord>, RepositoryError>> + Send;
+
+    /// Append a telemetry event. `wallet` is a hex address string, `kind` is a
+    /// short label like "miniapp_open". Used to measure weekly active wallets.
+    fn record_event(
+        &self,
+        wallet: &str,
+        kind: &str,
+    ) -> impl Future<Output = Result<(), RepositoryError>> + Send;
 }

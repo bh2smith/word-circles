@@ -37,6 +37,47 @@
         }
       }
     },
+    "/api/event": {
+      "post": {
+        "tags": [],
+        "operationId": "post_event",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Event recorded"
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/game": {
       "get": {
         "tags": [],
@@ -490,6 +531,21 @@
         ],
         "properties": {
           "error": {
+            "type": "string"
+          }
+        }
+      },
+      "EventRequest": {
+        "type": "object",
+        "required": [
+          "wallet",
+          "kind"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "wallet": {
             "type": "string"
           }
         }
