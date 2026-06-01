@@ -12,10 +12,12 @@ import type { GuessResult, LetterResult } from "@/lib/game";
 import { WORD_LENGTH } from "@/lib/game";
 import {
   initCircles,
+  isMiniappMode,
   subscribeWallet,
   getConnectedAddress,
   joinPvpGame,
   NoCirclesError,
+  CIRCLES_MINIAPP_URL,
 } from "@/lib/circles";
 import { encodeApprove, encodeJoin } from "@/lib/contract";
 import type {
@@ -408,12 +410,25 @@ export default function PvpGame() {
   }
 
   if (!walletAddress) {
+    const standalone = !isMiniappMode();
     return (
       <div className="flex flex-col items-center gap-4 text-white px-4 text-center">
         {title}
         <p className="text-neutral-400">
-          Connect your Circles wallet to play head-to-head.
+          {standalone
+            ? "PvP runs inside the Circles app — open Word Circles there to stake and race."
+            : "Connect your Circles wallet to play head-to-head."}
         </p>
+        {standalone && (
+          <a
+            href={CIRCLES_MINIAPP_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-6 py-2.5 rounded-lg bg-green-600 font-bold hover:bg-green-500 transition-colors"
+          >
+            Open in Circles
+          </a>
+        )}
       </div>
     );
   }

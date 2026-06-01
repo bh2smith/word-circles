@@ -20,6 +20,13 @@ import {
 
 export { isMiniappMode };
 
+export const CIRCLES_MINIAPP_URL =
+  "https://circles.gnosis.io/miniapps/word-circles";
+
+export function circlesProfileUrl(address: string): string {
+  return `https://app.gnosis.io/${address}`;
+}
+
 export type WalletListener = (address: string | null) => void;
 
 const listeners: Set<WalletListener> = new Set();

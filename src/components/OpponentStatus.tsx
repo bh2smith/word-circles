@@ -1,5 +1,6 @@
 "use client";
 
+import { circlesProfileUrl } from "@/lib/circles";
 import type { PvpPlayerStatus } from "@/lib/api";
 
 function truncate(addr: string): string {
@@ -95,9 +96,14 @@ export default function OpponentStatus({
 
   return (
     <div className="flex items-center gap-2 text-sm bg-neutral-800 rounded-full px-3 py-1.5">
-      <span className="font-mono text-neutral-500 text-xs">
+      <a
+        href={circlesProfileUrl(opponent.address)}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="font-mono text-neutral-500 hover:text-green-400 text-xs transition-colors"
+      >
         {truncate(opponent.address)}
-      </span>
+      </a>
       <span className={`flex items-center gap-1.5 ${tone}`}>
         {icon}
         {label}

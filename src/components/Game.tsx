@@ -16,6 +16,7 @@ import {
   submitGameResult,
   getConnectedAddress,
   subscribeWallet,
+  CIRCLES_MINIAPP_URL,
 } from "@/lib/circles";
 import {
   STATS_CONTRACT,
@@ -279,12 +280,25 @@ export default function Game() {
   // browser rather than the Circles miniapp) we only reveal the leaderboard,
   // so the day's word can't be solved off the record and replayed in one guess.
   if (!walletAddress) {
+    const standalone = !isMiniappMode();
     return (
       <div className="flex flex-col items-center gap-5 w-full max-w-md mx-auto px-4 text-white">
         <h1 className="text-2xl font-bold tracking-wider">WORD CIRCLES</h1>
         <p className="text-neutral-400 text-center">
-          Connect your Circles wallet to play today&apos;s word.
+          {standalone
+            ? "Word Circles runs as a mini-app inside the Circles app."
+            : "Connect your Circles wallet to play today's word."}
         </p>
+        {standalone && (
+          <a
+            href={CIRCLES_MINIAPP_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-6 py-2.5 rounded-lg bg-green-600 font-bold hover:bg-green-500 transition-colors"
+          >
+            Open in Circles
+          </a>
+        )}
         <div className="w-full bg-neutral-800 rounded-xl p-6 max-h-[70vh] flex flex-col">
           <h2 className="text-center text-lg font-bold mb-4 uppercase tracking-wider">
             Leaderboard

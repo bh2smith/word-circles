@@ -1,6 +1,7 @@
 "use client";
 
 import Board from "./Board";
+import { circlesProfileUrl } from "@/lib/circles";
 import type { GuessResult, LetterResult } from "@/lib/game";
 import type { PvpTranscript, PvpTranscriptPlayer } from "@/lib/api";
 
@@ -45,9 +46,14 @@ function PlayerColumn({
     >
       <div className="text-center">
         <p className="font-semibold">{title}</p>
-        <p className="font-mono text-neutral-500 text-xs">
+        <a
+          href={circlesProfileUrl(player.address)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="font-mono text-neutral-500 hover:text-green-400 text-xs transition-colors"
+        >
           {truncate(player.address)}
-        </p>
+        </a>
       </div>
       <Board guesses={toGuesses(player)} currentGuess="" shake={false} />
       <p className="text-sm text-neutral-400">

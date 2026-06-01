@@ -1,7 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CirclesProfile, fetchCirclesProfiles } from "@/lib/circles";
+import {
+  CirclesProfile,
+  circlesProfileUrl,
+  fetchCirclesProfiles,
+} from "@/lib/circles";
 import type { LeaderboardEntry, DailyResult } from "@/lib/api";
 
 function truncateAddress(addr: string): string {
@@ -147,7 +151,12 @@ function PlayerCell({
   const profile = profiles.get(address.toLowerCase());
   return (
     <td className="py-1.5">
-      <div className="flex items-center gap-2 min-w-0">
+      <a
+        href={circlesProfileUrl(address)}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex items-center gap-2 min-w-0 hover:text-green-400 transition-colors"
+      >
         {profile?.previewImageUrl ? (
           <img
             src={profile.previewImageUrl}
@@ -160,7 +169,7 @@ function PlayerCell({
         <span className="truncate text-sm">
           {profile?.name ?? truncateAddress(address)}
         </span>
-      </div>
+      </a>
     </td>
   );
 }
