@@ -1548,7 +1548,7 @@ dependencies = [
 [[package]]
 name = "circles-abis"
 version = "0.1.0"
-source = "git+https://github.com/deluXtreme/circles-rs.git?branch=fix%2Fsafe-runner-local-signing#822a52000830b6300927153fee9d946fdd8b0553"
+source = "git+https://github.com/deluXtreme/circles-rs.git?branch=fix%2Fsafe-runner-local-signing#ff6a9024722d404e4897d586f49b0afb9ca90d1c"
 dependencies = [
  "alloy-contract",
  "alloy-sol-types",
@@ -1557,7 +1557,7 @@ dependencies = [
 [[package]]
 name = "circles-pathfinder"
 version = "0.5.1"
-source = "git+https://github.com/deluXtreme/circles-rs.git?branch=fix%2Fsafe-runner-local-signing#822a52000830b6300927153fee9d946fdd8b0553"
+source = "git+https://github.com/deluXtreme/circles-rs.git?branch=fix%2Fsafe-runner-local-signing#ff6a9024722d404e4897d586f49b0afb9ca90d1c"
 dependencies = [
  "alloy-contract",
  "alloy-primitives",
@@ -1574,7 +1574,7 @@ dependencies = [
 [[package]]
 name = "circles-profiles"
 version = "0.1.0"
-source = "git+https://github.com/deluXtreme/circles-rs.git?branch=fix%2Fsafe-runner-local-signing#822a52000830b6300927153fee9d946fdd8b0553"
+source = "git+https://github.com/deluXtreme/circles-rs.git?branch=fix%2Fsafe-runner-local-signing#ff6a9024722d404e4897d586f49b0afb9ca90d1c"
 dependencies = [
  "circles-types",
  "reqwest 0.12.28",
@@ -1588,7 +1588,7 @@ dependencies = [
 [[package]]
 name = "circles-rpc"
 version = "0.1.1"
-source = "git+https://github.com/deluXtreme/circles-rs.git?branch=fix%2Fsafe-runner-local-signing#822a52000830b6300927153fee9d946fdd8b0553"
+source = "git+https://github.com/deluXtreme/circles-rs.git?branch=fix%2Fsafe-runner-local-signing#ff6a9024722d404e4897d586f49b0afb9ca90d1c"
 dependencies = [
  "alloy-json-rpc",
  "alloy-primitives",
@@ -1608,7 +1608,7 @@ dependencies = [
 [[package]]
 name = "circles-sdk"
 version = "0.1.1"
-source = "git+https://github.com/deluXtreme/circles-rs.git?branch=fix%2Fsafe-runner-local-signing#822a52000830b6300927153fee9d946fdd8b0553"
+source = "git+https://github.com/deluXtreme/circles-rs.git?branch=fix%2Fsafe-runner-local-signing#ff6a9024722d404e4897d586f49b0afb9ca90d1c"
 dependencies = [
  "alloy-contract",
  "alloy-network",
@@ -1637,7 +1637,7 @@ dependencies = [
 [[package]]
 name = "circles-transfers"
 version = "0.1.1"
-source = "git+https://github.com/deluXtreme/circles-rs.git?branch=fix%2Fsafe-runner-local-signing#822a52000830b6300927153fee9d946fdd8b0553"
+source = "git+https://github.com/deluXtreme/circles-rs.git?branch=fix%2Fsafe-runner-local-signing#ff6a9024722d404e4897d586f49b0afb9ca90d1c"
 dependencies = [
  "alloy-primitives",
  "alloy-provider",
@@ -1657,7 +1657,7 @@ dependencies = [
 [[package]]
 name = "circles-types"
 version = "0.3.1"
-source = "git+https://github.com/deluXtreme/circles-rs.git?branch=fix%2Fsafe-runner-local-signing#822a52000830b6300927153fee9d946fdd8b0553"
+source = "git+https://github.com/deluXtreme/circles-rs.git?branch=fix%2Fsafe-runner-local-signing#ff6a9024722d404e4897d586f49b0afb9ca90d1c"
 dependencies = [
  "alloy-json-abi",
  "alloy-primitives",
@@ -1671,7 +1671,7 @@ dependencies = [
 [[package]]
 name = "circles-utils"
 version = "0.1.1"
-source = "git+https://github.com/deluXtreme/circles-rs.git?branch=fix%2Fsafe-runner-local-signing#822a52000830b6300927153fee9d946fdd8b0553"
+source = "git+https://github.com/deluXtreme/circles-rs.git?branch=fix%2Fsafe-runner-local-signing#ff6a9024722d404e4897d586f49b0afb9ca90d1c"
 dependencies = [
  "alloy-primitives",
  "num-bigint",
