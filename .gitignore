@@ -34,6 +34,10 @@
 .DS_Store
 *.pem
 
+# generated Dune upload artifacts (rebuilt by dune/scripts/build_circles_names.py;
+# the Dune table is the source of truth)
+/dune/uploads/*.csv
+
 # debug
 npm-debug.log*
 yarn-debug.log*

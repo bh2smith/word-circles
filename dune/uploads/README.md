@@ -1,6 +1,9 @@
 # Dune uploaded tables
 
-CSV datasets uploaded to Dune and read by the queries in `../queries`.
+Generated CSVs uploaded to Dune and read by the queries in `../queries`. The
+CSVs themselves are **not committed** (gitignored) — they are build artifacts,
+and the uploaded Dune table is the source of truth. Rebuild and re-upload when
+you want to refresh.
 
 ## `circles_profile_names.csv` → `dune.<handle>.dataset_word_circles_player_names`
 
