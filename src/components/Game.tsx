@@ -6,6 +6,7 @@ import Keyboard, { computeLetterStates } from "./Keyboard";
 import Toast from "./Toast";
 import HintPanel from "./HintPanel";
 import StatsModal, { EMPTY_STATS, type Stats } from "./StatsModal";
+import InstructionsModal from "./InstructionsModal";
 import Leaderboard, { LeaderboardPanel } from "./Leaderboard";
 import type { GuessResult, LetterResult } from "@/lib/game";
 import { MAX_GUESSES, WORD_LENGTH } from "@/lib/game";
@@ -70,6 +71,7 @@ export default function Game() {
   const [stats, setStats] = useState<Stats>(EMPTY_STATS);
   const [showStats, setShowStats] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [showInstructions, setShowInstructions] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [walletAddress, setWalletAddress] = useState<string | null>(
     getConnectedAddress(),
@@ -365,27 +367,44 @@ export default function Game() {
             <rect x="16" y="8" width="5" height="10" rx="1" />
           </svg>
         </button>
-        <h1 className="text-2xl sm:text-3xl font-bold tracking-wider text-white">
-          WORD CIRCLES
-        </h1>
-        <button
-          onClick={() => setShowStats(true)}
-          className="w-10 h-10 flex items-center justify-center text-white hover:bg-neutral-700 rounded transition-colors"
-          aria-label="Statistics"
-        >
-          <svg
-            width="24"
-            height="24"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setShowInstructions(true)}
+            className="w-10 h-10 flex items-center justify-center text-white hover:bg-neutral-700 rounded transition-colors"
+            aria-label="How to play"
           >
-            <rect x="4" y="14" width="4" height="7" rx="1" />
-            <rect x="10" y="9" width="4" height="12" rx="1" />
-            <rect x="16" y="4" width="4" height="17" rx="1" />
-          </svg>
-        </button>
+            <svg
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <circle cx="12" cy="12" r="9" />
+              <path d="M9.5 9a2.5 2.5 0 0 1 4.5 1.5c0 1.5-2 2-2 3" />
+              <line x1="12" y1="17" x2="12" y2="17.01" />
+            </svg>
+          </button>
+          <button
+            onClick={() => setShowStats(true)}
+            className="w-10 h-10 flex items-center justify-center text-white hover:bg-neutral-700 rounded transition-colors"
+            aria-label="Statistics"
+          >
+            <svg
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <rect x="4" y="14" width="4" height="7" rx="1" />
+              <rect x="10" y="9" width="4" height="12" rx="1" />
+              <rect x="16" y="4" width="4" height="17" rx="1" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       {/* Game number */}
@@ -438,6 +457,12 @@ export default function Game() {
         open={showLeaderboard}
         onClose={() => setShowLeaderboard(false)}
         gameId={gameId}
+      />
+
+      {/* Instructions Modal */}
+      <InstructionsModal
+        open={showInstructions}
+        onClose={() => setShowInstructions(false)}
       />
     </div>
   );
