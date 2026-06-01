@@ -68,10 +68,17 @@ export async function submitGameResult(
   ]);
 }
 
+// Thrown when the player can't be lifted into the stake token because their
+// personal CRC balance is below the demurraged collateral the groupMint needs.
+// Carries both amounts so the UI can show the shortfall in CRC units.
 export class NoCirclesError extends Error {
-  constructor() {
+  readonly available: bigint;
+  readonly required: bigint;
+  constructor(available: bigint, required: bigint) {
     super("no-circles");
     this.name = "NoCirclesError";
+    this.available = available;
+    this.required = required;
   }
 }
 
@@ -105,16 +112,16 @@ export async function joinPvpGame(params: JoinPvpParams) {
   if (player && stake !== undefined) {
     const held = await getErc20Balance(token, player);
     if (held < stake) {
-      // Need to mint the shortfall from personal CRC. If the player has none, the
-      // lift can't succeed and they can't play — surface that distinctly.
-      const personal = await getPersonalCrcBalance(player);
-      if (personal === BigInt(0)) throw new NoCirclesError();
-
+      // Need to mint the shortfall from personal CRC. The wrap math runs in
+      // demurraged units, so check the player has at least that much before
+      // building the batch — otherwise groupMint reverts silently (0x) in the
+      // wallet and the user sees a generic failure.
       const group = await getTokenAvatar(token);
-      // groupMint/wrap operate in demurraged units; convert the static stake.
-      // The wallet supplies the player's own personal CRC as collateral, so the
-      // host fills collateral selection; we mint into the group and wrap to s-gCRC.
       const wrapAmount = await staticToDemurrage(token, stake);
+      const personal = await getPersonalCrcBalance(player);
+      if (personal < wrapAmount) {
+        throw new NoCirclesError(personal, wrapAmount);
+      }
       lift.push(
         {
           to: HUB_ADDRESS,

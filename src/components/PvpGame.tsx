@@ -189,8 +189,10 @@ export default function PvpGame() {
     } catch (err) {
       console.error("PvP join failed:", err);
       if (err instanceof NoCirclesError) {
+        // Show the CRC shortfall to whole-token precision (Circles are 18 decimals).
+        const shortCrc = Number(err.required - err.available) / 1e18;
         setToast(
-          "You need Circles (CRC) to play PvP — none found in this wallet",
+          `Not enough Circles to stake. You need ~${shortCrc.toFixed(3)} more CRC — claim daily CRC in the Circles app and try again.`,
         );
       } else {
         setToast("Couldn't join — transaction rejected or reverted");
