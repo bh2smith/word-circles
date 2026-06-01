@@ -222,7 +222,13 @@ async fn post_guess<R: GameRepository>(
             }
         };
 
-        let game_player = match players.iter().find(|p| p.address == *address) {
+        // Player addresses are stored lowercase (encode_address); the client
+        // sends a checksummed (mixed-case) address. Compare case-insensitively,
+        // matching the daily path and the bot's in-process player matching.
+        let game_player = match players
+            .iter()
+            .find(|p| p.address.eq_ignore_ascii_case(address))
+        {
             Some(p) => p,
             None => return err_response(StatusCode::FORBIDDEN, "Not a player in this game"),
         };
