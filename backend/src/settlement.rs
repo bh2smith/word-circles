@@ -1,5 +1,5 @@
 use crate::chain::ResolverClient;
-use crate::db::models::{GamePlayerRecord, GameRecord};
+use crate::db::models::{GamePlayerRecord, GameRecord, GuessRecord};
 use crate::db::repository::GameRepository;
 use crate::game;
 use crate::indexer::parse_game_id_bytes;
@@ -12,7 +12,74 @@ pub struct SettlementResult {
     pub amounts: Vec<U256>,
 }
 
-pub fn determine_winner(players: &[GamePlayerRecord], game: &GameRecord) -> SettlementResult {
+/// Cumulative tile counts across all of a player's guesses, used to break a tie
+/// when both players spent the same number of guesses. Greens (Correct) are the
+/// primary tiebreaker, oranges (Present) the secondary.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct TileScore {
+    pub greens: u32,
+    pub oranges: u32,
+}
+
+/// Sum greens/oranges over a player's recorded guesses. The winning guess (all
+/// green) and any earlier rows all contribute, so a player who converged faster
+/// — more greens/oranges along the way — outscores one who guessed wildly. Since
+/// the tiebreak only fires on an equal guess count, both players have the same
+/// number of rows, making this a fair comparison.
+pub fn tally_tiles(guesses: &[GuessRecord]) -> TileScore {
+    let mut score = TileScore::default();
+    for g in guesses {
+        let Ok(results) = serde_json::from_str::<Vec<game::LetterResult>>(&g.results) else {
+            continue;
+        };
+        for r in results {
+            match r {
+                game::LetterResult::Correct => score.greens += 1,
+                game::LetterResult::Present => score.oranges += 1,
+                game::LetterResult::Absent => {}
+            }
+        }
+    }
+    score
+}
+
+/// Award the pot on the tile tiebreaker: most greens wins, then most oranges; a
+/// genuine all-equal tie still splits.
+fn break_tie(
+    p1_addr: Address,
+    p2_addr: Address,
+    t1: TileScore,
+    t2: TileScore,
+    pot: U256,
+) -> SettlementResult {
+    let k1 = (t1.greens, t1.oranges);
+    let k2 = (t2.greens, t2.oranges);
+    if k1 > k2 {
+        SettlementResult {
+            winners: vec![p1_addr],
+            amounts: vec![pot],
+        }
+    } else if k2 > k1 {
+        SettlementResult {
+            winners: vec![p2_addr],
+            amounts: vec![pot],
+        }
+    } else {
+        let half = pot / U256::from(2);
+        SettlementResult {
+            winners: vec![p1_addr, p2_addr],
+            amounts: vec![half, pot - half],
+        }
+    }
+}
+
+/// `tiles` is parallel to `players` (cumulative tile score per player) and is
+/// only consulted to break an equal-guess-count tie.
+pub fn determine_winner(
+    players: &[GamePlayerRecord],
+    tiles: &[TileScore],
+    game: &GameRecord,
+) -> SettlementResult {
     let capacity = game.capacity.unwrap_or(2) as u64;
     let per_player: U256 = game
         .amount
@@ -30,6 +97,9 @@ pub fn determine_winner(players: &[GamePlayerRecord], game: &GameRecord) -> Sett
 
     let p1 = &players[0];
     let p2 = &players[1];
+
+    let t1 = tiles.first().copied().unwrap_or_default();
+    let t2 = tiles.get(1).copied().unwrap_or_default();
 
     let p1_addr: Address = p1.address.parse().unwrap_or(Address::ZERO);
     let p2_addr: Address = p2.address.parse().unwrap_or(Address::ZERO);
@@ -82,20 +152,13 @@ pub fn determine_winner(players: &[GamePlayerRecord], game: &GameRecord) -> Sett
                     amounts: vec![pot],
                 }
             } else {
-                let half = pot / U256::from(2);
-                SettlementResult {
-                    winners: vec![p1_addr, p2_addr],
-                    amounts: vec![half, pot - half],
-                }
+                // Same guess count: break the tie on cumulative tiles.
+                break_tie(p1_addr, p2_addr, t1, t2, pot)
             }
         }
-        (false, false) => {
-            let half = pot / U256::from(2);
-            SettlementResult {
-                winners: vec![p1_addr, p2_addr],
-                amounts: vec![half, pot - half],
-            }
-        }
+        // Both finished without solving (each used all guesses): closest board
+        // by cumulative tiles takes the pot.
+        (false, false) => break_tie(p1_addr, p2_addr, t1, t2, pot),
     }
 }
 
@@ -129,7 +192,18 @@ pub async fn settle_game<R: GameRepository>(
         }
     };
 
-    let result = determine_winner(&players, &game);
+    // Cumulative tile score per player, parallel to `players`, for the
+    // equal-guess-count tiebreaker.
+    let mut tiles = Vec::with_capacity(players.len());
+    for p in &players {
+        let guesses = repo
+            .get_guesses(game_id, p.player_id)
+            .await
+            .unwrap_or_default();
+        tiles.push(tally_tiles(&guesses));
+    }
+
+    let result = determine_winner(&players, &tiles, &game);
     let game_id_bytes = parse_game_id_bytes(game_id);
 
     let signature = match resolver
@@ -294,6 +368,25 @@ mod tests {
         }
     }
 
+    fn tiles(g: u32, o: u32) -> TileScore {
+        TileScore {
+            greens: g,
+            oranges: o,
+        }
+    }
+
+    // Tile scores for cases decided before the tiebreaker (values irrelevant).
+    const NO_TILES: [TileScore; 2] = [
+        TileScore {
+            greens: 0,
+            oranges: 0,
+        },
+        TileScore {
+            greens: 0,
+            oranges: 0,
+        },
+    ];
+
     fn game_with_pot(amount: &str, capacity: u32) -> GameRecord {
         GameRecord {
             id: "test".into(),
@@ -317,7 +410,7 @@ mod tests {
             player("0x0000000000000000000000000000000000000002", false, 6, true),
         ];
         let game = game_with_pot("10", 2);
-        let result = determine_winner(&players, &game);
+        let result = determine_winner(&players, &NO_TILES, &game);
 
         assert_eq!(result.winners.len(), 1);
         assert_eq!(
@@ -334,7 +427,7 @@ mod tests {
             player("0x0000000000000000000000000000000000000002", true, 5, true),
         ];
         let game = game_with_pot("10", 2);
-        let result = determine_winner(&players, &game);
+        let result = determine_winner(&players, &NO_TILES, &game);
 
         assert_eq!(result.winners.len(), 1);
         assert_eq!(
@@ -345,13 +438,50 @@ mod tests {
     }
 
     #[test]
-    fn same_guesses_splits() {
+    fn same_guesses_more_greens_wins() {
+        // Both solved in 4; p1 accumulated more greens along the way.
         let players = vec![
             player("0x0000000000000000000000000000000000000001", true, 4, true),
             player("0x0000000000000000000000000000000000000002", true, 4, true),
         ];
         let game = game_with_pot("10", 2);
-        let result = determine_winner(&players, &game);
+        let result = determine_winner(&players, &[tiles(11, 3), tiles(8, 5)], &game);
+
+        assert_eq!(result.winners.len(), 1);
+        assert_eq!(
+            result.winners[0],
+            address!("0x0000000000000000000000000000000000000001")
+        );
+        assert_eq!(result.amounts[0], U256::from(20));
+    }
+
+    #[test]
+    fn same_guesses_equal_greens_more_oranges_wins() {
+        // Equal greens — oranges break the tie in p2's favour.
+        let players = vec![
+            player("0x0000000000000000000000000000000000000001", true, 4, true),
+            player("0x0000000000000000000000000000000000000002", true, 4, true),
+        ];
+        let game = game_with_pot("10", 2);
+        let result = determine_winner(&players, &[tiles(9, 2), tiles(9, 6)], &game);
+
+        assert_eq!(result.winners.len(), 1);
+        assert_eq!(
+            result.winners[0],
+            address!("0x0000000000000000000000000000000000000002")
+        );
+        assert_eq!(result.amounts[0], U256::from(20));
+    }
+
+    #[test]
+    fn same_guesses_equal_tiles_splits() {
+        // Genuinely identical boards still split.
+        let players = vec![
+            player("0x0000000000000000000000000000000000000001", true, 4, true),
+            player("0x0000000000000000000000000000000000000002", true, 4, true),
+        ];
+        let game = game_with_pot("10", 2);
+        let result = determine_winner(&players, &[tiles(9, 4), tiles(9, 4)], &game);
 
         assert_eq!(result.winners.len(), 2);
         assert_eq!(result.amounts[0], U256::from(10));
@@ -359,13 +489,31 @@ mod tests {
     }
 
     #[test]
-    fn neither_solved_splits() {
+    fn neither_solved_closest_board_wins() {
+        // Both failed (used all guesses); the closer board takes the pot.
         let players = vec![
             player("0x0000000000000000000000000000000000000001", false, 6, true),
             player("0x0000000000000000000000000000000000000002", false, 6, true),
         ];
         let game = game_with_pot("10", 2);
-        let result = determine_winner(&players, &game);
+        let result = determine_winner(&players, &[tiles(7, 4), tiles(10, 2)], &game);
+
+        assert_eq!(result.winners.len(), 1);
+        assert_eq!(
+            result.winners[0],
+            address!("0x0000000000000000000000000000000000000002")
+        );
+        assert_eq!(result.amounts[0], U256::from(20));
+    }
+
+    #[test]
+    fn neither_solved_equal_tiles_splits() {
+        let players = vec![
+            player("0x0000000000000000000000000000000000000001", false, 6, true),
+            player("0x0000000000000000000000000000000000000002", false, 6, true),
+        ];
+        let game = game_with_pot("10", 2);
+        let result = determine_winner(&players, &[tiles(5, 3), tiles(5, 3)], &game);
 
         assert_eq!(result.winners.len(), 2);
         assert_eq!(result.amounts[0] + result.amounts[1], U256::from(20));
@@ -383,7 +531,7 @@ mod tests {
             ),
         ];
         let game = game_with_pot("10", 2);
-        let result = determine_winner(&players, &game);
+        let result = determine_winner(&players, &NO_TILES, &game);
 
         assert_eq!(result.winners.len(), 1);
         assert_eq!(
@@ -410,7 +558,7 @@ mod tests {
             ),
         ];
         let game = game_with_pot("10", 2);
-        let result = determine_winner(&players, &game);
+        let result = determine_winner(&players, &NO_TILES, &game);
 
         assert_eq!(result.winners.len(), 2);
         assert_eq!(result.amounts[0] + result.amounts[1], U256::from(20));
@@ -423,12 +571,31 @@ mod tests {
             player("0x0000000000000000000000000000000000000002", false, 6, true),
         ];
         let game = game_with_pot("10000000000000000000", 2); // 10e18
-        let result = determine_winner(&players, &game);
+        let result = determine_winner(&players, &NO_TILES, &game);
 
         assert_eq!(result.winners.len(), 1);
         assert_eq!(
             result.amounts[0],
             U256::from(20_000_000_000_000_000_000u128)
         );
+    }
+
+    #[test]
+    fn tally_tiles_counts_greens_and_oranges() {
+        let guess = |results: &str| GuessRecord {
+            id: None,
+            game_id: "g".into(),
+            player_id: 0,
+            guess_number: 0,
+            word: "crane".into(),
+            results: results.into(),
+            is_correct: false,
+            created_at: None,
+        };
+        let guesses = vec![
+            guess(r#"["correct","absent","present","absent","present"]"#),
+            guess(r#"["correct","correct","correct","correct","correct"]"#),
+        ];
+        assert_eq!(tally_tiles(&guesses), tiles(6, 2));
     }
 }
