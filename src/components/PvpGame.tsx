@@ -63,6 +63,11 @@ function isPlayable(status: string | undefined): boolean {
   return status === "open" || status === "active";
 }
 
+// When a player lands in a still-"open" (solo) game, hold their first guess for
+// a short grace window so an opponent has a chance to join before the race
+// starts. An opponent arriving (status -> "active") ends the window early.
+const GRACE_SECONDS = 15;
+
 export default function PvpGame() {
   const [config, setConfig] = useState<ContractConfig | null>(null);
   const [configLoaded, setConfigLoaded] = useState(false);
@@ -80,6 +85,11 @@ export default function PvpGame() {
   const [submitting, setSubmitting] = useState(false);
   const [shake, setShake] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+
+  // Grace window before the first guess unlocks in a solo "open" game.
+  // graceUntil is the wall-clock deadline (ms); `now` ticks while it counts down.
+  const [graceUntil, setGraceUntil] = useState<number | null>(null);
+  const [now, setNow] = useState(() => Date.now());
 
   // gameIds the player was already in before the latest join, so we can pick
   // out the newly created one during discovery.
@@ -152,6 +162,31 @@ export default function PvpGame() {
     setTimeout(() => setShake(false), 600);
   }, []);
 
+  // Arm the grace window once, when we first transition into a solo "open"
+  // game. A ref (not state) keeps it idempotent across repeated poll ticks and
+  // avoids re-gating a resumed game that the player already started.
+  const graceArmedRef = useRef(false);
+  const armGrace = useCallback((status: string | undefined) => {
+    if (!graceArmedRef.current && status === "open") {
+      graceArmedRef.current = true;
+      setGraceUntil(Date.now() + GRACE_SECONDS * 1000);
+    }
+  }, []);
+
+  // Tick `now` while the grace window counts down; self-terminates at the
+  // deadline so we stop re-rendering once guessing unlocks.
+  useEffect(() => {
+    if (graceUntil === null || now >= graceUntil) return;
+    const id = setInterval(() => setNow(Date.now()), 500);
+    return () => clearInterval(id);
+  }, [graceUntil, now]);
+
+  // Guessing is locked while the window is open AND we're still solo; an
+  // opponent joining (status -> "active") unlocks immediately.
+  const graceActive =
+    graceUntil !== null && game?.status === "open" && now < graceUntil;
+  const canGuess = phase === "playing" && !graceActive;
+
   const fetchActiveGames = useCallback(
     async (address: string): Promise<PvpGameResponse[]> => {
       const res = await fetch(
@@ -220,7 +255,9 @@ export default function PvpGame() {
         setGame(chosen);
         // "open" (word committed, lobby not yet full) is already playable, so go
         // straight into the room; the "waiting for opponent" state is shown as a
-        // banner over the board rather than a blocking screen.
+        // banner over the board rather than a blocking screen. Hold the first
+        // guess briefly so an opponent still has a chance to join.
+        armGrace(chosen.status);
         setPhase(isPlayable(chosen.status) ? "playing" : "waiting");
       } else if (Date.now() - startedAt > 60_000) {
         setToast("Couldn't find your game yet — it may still be pending.");
@@ -234,7 +271,7 @@ export default function PvpGame() {
       active = false;
       clearInterval(id);
     };
-  }, [phase, walletAddress, fetchActiveGames]);
+  }, [phase, walletAddress, fetchActiveGames, armGrace]);
 
   // Poll the live game state while waiting, playing, or awaiting settlement.
   useEffect(() => {
@@ -259,6 +296,7 @@ export default function PvpGame() {
       if (isSettled) {
         if (phase !== "finished") setPhase("finished");
       } else if (phase === "waiting" && isPlayable(g.status)) {
+        armGrace(g.status);
         setPhase("playing");
       }
     };
@@ -269,7 +307,7 @@ export default function PvpGame() {
       active = false;
       clearInterval(id);
     };
-  }, [gameId, phase]);
+  }, [gameId, phase, armGrace]);
 
   // Once the game has settled, fetch both players' transcripts for the
   // head-to-head results screen.
@@ -290,7 +328,7 @@ export default function PvpGame() {
 
   const submitGuess = useCallback(async () => {
     if (
-      phase !== "playing" ||
+      !canGuess ||
       !gameId ||
       currentGuess.length !== WORD_LENGTH ||
       submitting
@@ -336,7 +374,7 @@ export default function PvpGame() {
       setSubmitting(false);
     }
   }, [
-    phase,
+    canGuess,
     gameId,
     currentGuess,
     guesses,
@@ -347,7 +385,7 @@ export default function PvpGame() {
 
   const onKey = useCallback(
     (key: string) => {
-      if (phase !== "playing" || submitting) return;
+      if (!canGuess || submitting) return;
       if (key === "Enter") {
         if (currentGuess.length === WORD_LENGTH) submitGuess();
         else {
@@ -364,7 +402,7 @@ export default function PvpGame() {
         setCurrentGuess((p) => p + key.toLowerCase());
       }
     },
-    [phase, submitting, currentGuess, submitGuess, shakeOnce],
+    [canGuess, submitting, currentGuess, submitGuess, shakeOnce],
   );
 
   useEffect(() => {
@@ -385,6 +423,8 @@ export default function PvpGame() {
     setGuesses([]);
     setCurrentGuess("");
     setSolved(false);
+    setGraceUntil(null);
+    graceArmedRef.current = false;
   }, [clearSaved]);
 
   // --- Rendering ---------------------------------------------------------
@@ -559,15 +599,25 @@ export default function PvpGame() {
 
       <OpponentStatus opponent={opponent} settled={settled} />
 
-      {phase === "playing" && game?.status === "open" && (
-        <div className="w-full max-w-lg rounded-lg bg-neutral-800/80 px-4 py-2 text-center text-sm text-neutral-300">
-          <span className="inline-flex items-center gap-2">
-            <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-            Get a head start — still finding you an opponent. Your guesses
-            count.
-          </span>
-        </div>
-      )}
+      {phase === "playing" &&
+        game?.status === "open" &&
+        (graceActive ? (
+          <div className="w-full max-w-lg rounded-lg bg-neutral-800/80 px-4 py-2 text-center text-sm text-neutral-300">
+            <span className="inline-flex items-center gap-2">
+              <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+              Finding you an opponent… you can start guessing in{" "}
+              {Math.ceil((graceUntil! - now) / 1000)}s.
+            </span>
+          </div>
+        ) : (
+          <div className="w-full max-w-lg rounded-lg bg-neutral-800/80 px-4 py-2 text-center text-sm text-neutral-300">
+            <span className="inline-flex items-center gap-2">
+              <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+              Get a head start — still finding you an opponent. Your guesses
+              count.
+            </span>
+          </div>
+        ))}
 
       {phase === "finished" && (
         <div className="text-center">
@@ -600,13 +650,15 @@ export default function PvpGame() {
           <Keyboard
             letterStates={letterStates}
             onKey={onKey}
-            disabled={submitting}
+            disabled={submitting || graceActive}
           />
           <div className="flex items-start justify-between w-full max-w-lg gap-2">
             <HintPanel guesses={guesses} onSelectWord={setCurrentGuess} />
             <button
               onClick={submitGuess}
-              disabled={currentGuess.length !== WORD_LENGTH || submitting}
+              disabled={
+                currentGuess.length !== WORD_LENGTH || submitting || graceActive
+              }
               className="shrink-0 px-4 py-2 text-sm font-semibold rounded bg-green-600 text-white disabled:opacity-30 disabled:cursor-not-allowed hover:bg-green-500 transition-colors"
             >
               Submit
