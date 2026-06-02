@@ -14,14 +14,37 @@ function toGuesses(p: PvpTranscriptPlayer): GuessResult[] {
 
 type Outcome = "won" | "lost" | "tie";
 
-// Mirrors the contract settlement priority closely enough for display: solving
-// beats not solving, then fewest guesses wins, otherwise a draw.
+// Cumulative [greens, oranges] across all of a player's guesses — the
+// equal-guess-count tiebreaker (see backend settlement `tally_tiles`).
+function tiles(p: PvpTranscriptPlayer): [number, number] {
+  let greens = 0;
+  let oranges = 0;
+  for (const g of p.guesses) {
+    for (const r of g.results) {
+      if (r === "correct") greens++;
+      else if (r === "present") oranges++;
+    }
+  }
+  return [greens, oranges];
+}
+
+// Mirrors the contract settlement priority: solving beats not solving, then
+// fewest guesses wins; on an equal guess count, the closer board wins on
+// cumulative greens then oranges, and only a true tile tie is a draw.
 function outcome(me: PvpTranscriptPlayer, opp: PvpTranscriptPlayer): Outcome {
   if (me.solved !== opp.solved) return me.solved ? "won" : "lost";
   if (me.solved && opp.solved) {
     if (me.guessCount < opp.guessCount) return "won";
     if (me.guessCount > opp.guessCount) return "lost";
   }
+  // Equal guess count (both solved in the same number, or both failed): break
+  // the tie on cumulative tiles, greens first then oranges. (The backend instead
+  // splits when *neither finished* — a timeout/abandon — but the transcript has
+  // no finished flag to distinguish that here; solved games match exactly.)
+  const [mg, mo] = tiles(me);
+  const [og, oo] = tiles(opp);
+  if (mg !== og) return mg > og ? "won" : "lost";
+  if (mo !== oo) return mo > oo ? "won" : "lost";
   return "tie";
 }
 
