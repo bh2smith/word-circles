@@ -65,8 +65,9 @@ function isPlayable(status: string | undefined): boolean {
 
 // When a player lands in a still-"open" (solo) game, hold their first guess for
 // a short grace window so an opponent has a chance to join before the race
-// starts. An opponent arriving (status -> "active") ends the window early.
-const GRACE_SECONDS = 15;
+// starts. Kept brief and undisplayed — an opponent arriving (status ->
+// "active") ends it early.
+const GRACE_SECONDS = 5;
 
 export default function PvpGame() {
   const [config, setConfig] = useState<ContractConfig | null>(null);
@@ -599,25 +600,18 @@ export default function PvpGame() {
 
       <OpponentStatus opponent={opponent} settled={settled} />
 
-      {phase === "playing" &&
-        game?.status === "open" &&
-        (graceActive ? (
-          <div className="w-full max-w-lg rounded-lg bg-neutral-800/80 px-4 py-2 text-center text-sm text-neutral-300">
-            <span className="inline-flex items-center gap-2">
-              <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-              Finding you an opponent… you can start guessing in{" "}
-              {Math.ceil((graceUntil! - now) / 1000)}s.
+      {phase === "playing" && game?.status === "open" && (
+        <div className="w-full max-w-lg rounded-lg bg-neutral-800/80 px-4 py-2 text-center text-sm text-neutral-300">
+          <span className="inline-flex items-center gap-2">
+            You can start now — your opponent will join soon.
+            <span className="inline-flex gap-1">
+              <span className="w-2 h-2 bg-green-500 rounded-full animate-bounce [animation-delay:-0.3s]" />
+              <span className="w-2 h-2 bg-green-500 rounded-full animate-bounce [animation-delay:-0.15s]" />
+              <span className="w-2 h-2 bg-green-500 rounded-full animate-bounce" />
             </span>
-          </div>
-        ) : (
-          <div className="w-full max-w-lg rounded-lg bg-neutral-800/80 px-4 py-2 text-center text-sm text-neutral-300">
-            <span className="inline-flex items-center gap-2">
-              <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-              Get a head start — still finding you an opponent. Your guesses
-              count.
-            </span>
-          </div>
-        ))}
+          </span>
+        </div>
+      )}
 
       {phase === "finished" && (
         <div className="text-center">

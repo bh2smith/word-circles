@@ -7,8 +7,13 @@ import {
   subscribeWallet,
   getConnectedAddress,
 } from "@/lib/circles";
-import type { PvpGameResponse } from "@/lib/api";
-import { outcomeFor, type HistoryOutcome } from "@/lib/pvpHistory";
+import type { PvpGameResponse, PvpTranscript } from "@/lib/api";
+import {
+  outcomeFor,
+  isSettled,
+  transcriptOutcomeFor,
+  type HistoryOutcome,
+} from "@/lib/pvpHistory";
 
 type Tab = "ongoing" | "won" | "lost";
 
@@ -77,6 +82,11 @@ export default function PvpHistory() {
     getConnectedAddress(),
   );
   const [games, setGames] = useState<PvpGameResponse[] | null>(null);
+  // Authoritative per-game outcomes derived from each settled game's transcript
+  // (solved + tiles), keyed by gameId. The guess-count-only list response can't
+  // break an equal-guess-count tie, so it mislabels tile-decided wins as draws;
+  // this overrides those once the transcripts load.
+  const [resolved, setResolved] = useState<Record<string, HistoryOutcome>>({});
   const [tab, setTab] = useState<Tab>("ongoing");
 
   useEffect(() => {
@@ -97,6 +107,36 @@ export default function PvpHistory() {
     if (walletAddress) load(walletAddress);
   }, [walletAddress, load]);
 
+  // Refine settled games with the transcript-derived outcome so a tile-tiebreak
+  // win shows as Won rather than the list view's guess-count-only Draw fallback.
+  useEffect(() => {
+    if (!games || !walletAddress) return;
+    let active = true;
+    const settled = games.filter((g) => isSettled(g.status));
+    Promise.all(
+      settled.map(async (g) => {
+        try {
+          const res = await fetch(`/api/games/${g.gameId}/transcript`);
+          if (!res.ok) return null;
+          const t: PvpTranscript = await res.json();
+          const outcome = transcriptOutcomeFor(t, walletAddress);
+          return outcome ? ([g.gameId, outcome] as const) : null;
+        } catch {
+          return null;
+        }
+      }),
+    ).then((entries) => {
+      if (!active) return;
+      const next = Object.fromEntries(
+        entries.filter((e): e is readonly [string, HistoryOutcome] => !!e),
+      );
+      setResolved(next);
+    });
+    return () => {
+      active = false;
+    };
+  }, [games, walletAddress]);
+
   if (!walletAddress) {
     return (
       <div className="text-center text-neutral-400 px-4">
@@ -111,7 +151,7 @@ export default function PvpHistory() {
 
   const classified = games.map((g) => ({
     game: g,
-    outcome: outcomeFor(g, walletAddress),
+    outcome: resolved[g.gameId] ?? outcomeFor(g, walletAddress),
   }));
   const visible = classified.filter(({ outcome }) => tabFor(outcome) === tab);
 

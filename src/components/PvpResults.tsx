@@ -4,48 +4,13 @@ import Board from "./Board";
 import PlayerProfile from "./PlayerProfile";
 import type { GuessResult, LetterResult } from "@/lib/game";
 import type { PvpTranscript, PvpTranscriptPlayer } from "@/lib/api";
+import { settledOutcome } from "@/lib/pvpHistory";
 
 function toGuesses(p: PvpTranscriptPlayer): GuessResult[] {
   return p.guesses.map((g) => ({
     word: g.word,
     results: g.results as LetterResult[],
   }));
-}
-
-type Outcome = "won" | "lost" | "tie";
-
-// Cumulative [greens, oranges] across all of a player's guesses — the
-// equal-guess-count tiebreaker (see backend settlement `tally_tiles`).
-function tiles(p: PvpTranscriptPlayer): [number, number] {
-  let greens = 0;
-  let oranges = 0;
-  for (const g of p.guesses) {
-    for (const r of g.results) {
-      if (r === "correct") greens++;
-      else if (r === "present") oranges++;
-    }
-  }
-  return [greens, oranges];
-}
-
-// Mirrors the contract settlement priority: solving beats not solving, then
-// fewest guesses wins; on an equal guess count, the closer board wins on
-// cumulative greens then oranges, and only a true tile tie is a draw.
-function outcome(me: PvpTranscriptPlayer, opp: PvpTranscriptPlayer): Outcome {
-  if (me.solved !== opp.solved) return me.solved ? "won" : "lost";
-  if (me.solved && opp.solved) {
-    if (me.guessCount < opp.guessCount) return "won";
-    if (me.guessCount > opp.guessCount) return "lost";
-  }
-  // Equal guess count (both solved in the same number, or both failed): break
-  // the tie on cumulative tiles, greens first then oranges. (The backend instead
-  // splits when *neither finished* — a timeout/abandon — but the transcript has
-  // no finished flag to distinguish that here; solved games match exactly.)
-  const [mg, mo] = tiles(me);
-  const [og, oo] = tiles(opp);
-  if (mg !== og) return mg > og ? "won" : "lost";
-  if (mo !== oo) return mo > oo ? "won" : "lost";
-  return "tie";
 }
 
 function PlayerColumn({
@@ -93,7 +58,7 @@ export default function PvpResults({
     ) ?? transcript.players[0];
   const opp = transcript.players.find((p) => p !== me) ?? null;
 
-  const result = opp ? outcome(me, opp) : null;
+  const result = opp ? settledOutcome(me, opp) : null;
   const heading =
     result === "won"
       ? "You won! 🏆"

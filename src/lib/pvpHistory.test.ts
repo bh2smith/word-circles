@@ -1,6 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import { outcomeFor, isSettled } from "./pvpHistory";
-import type { PvpGameResponse } from "@/lib/api";
+import {
+  outcomeFor,
+  isSettled,
+  settledOutcome,
+  transcriptOutcomeFor,
+} from "./pvpHistory";
+import type {
+  PvpGameResponse,
+  PvpTranscript,
+  PvpTranscriptPlayer,
+} from "@/lib/api";
 
 const ME = "0xaaaa000000000000000000000000000000000000";
 const OPP = "0xbbbb000000000000000000000000000000000000";
@@ -17,6 +26,33 @@ function game(
     timeoutSecs: 10800,
     players,
   };
+}
+
+// Build a transcript player from compact per-guess tile strings (g/o/_ ->
+// correct/present/absent). The last row's solved flag is derived from `solved`.
+function tplayer(
+  address: string,
+  solved: boolean,
+  rows: string[],
+): PvpTranscriptPlayer {
+  const map: Record<string, "correct" | "present" | "absent"> = {
+    g: "correct",
+    o: "present",
+    _: "absent",
+  };
+  return {
+    address,
+    solved,
+    guessCount: rows.length,
+    guesses: rows.map((row) => ({
+      word: "crane",
+      results: [...row].map((c) => map[c]),
+    })),
+  };
+}
+
+function transcript(...players: PvpTranscriptPlayer[]): PvpTranscript {
+  return { gameId: "0x1", status: "settled", answer: "crane", players };
 }
 
 describe("outcomeFor", () => {
@@ -91,6 +127,81 @@ describe("outcomeFor", () => {
       { address: OPP, status: "finished", guessCount: 5 },
     ]);
     expect(outcomeFor(g, ME)).toBe("won");
+  });
+});
+
+describe("settledOutcome (transcript: solved -> guesses -> tiles)", () => {
+  test("solving beats not solving", () => {
+    const me = tplayer(ME, true, ["___oo", "ggggg"]);
+    const opp = tplayer(OPP, false, ["___oo", "g__o_", "_____"]);
+    expect(settledOutcome(me, opp)).toBe("won");
+    expect(settledOutcome(opp, me)).toBe("lost");
+  });
+
+  test("both solved: fewer guesses wins", () => {
+    const me = tplayer(ME, true, ["g_o__", "ggggg"]);
+    const opp = tplayer(OPP, true, ["__o__", "g_o__", "ggggg"]);
+    expect(settledOutcome(me, opp)).toBe("won");
+    expect(settledOutcome(opp, me)).toBe("lost");
+  });
+
+  test("equal guess count broken by greens (the draw bug)", () => {
+    // Both solved in 2; same guess count. Pre-fix this read as a draw — now the
+    // richer first row (more greens) wins it.
+    const me = tplayer(ME, true, ["ggg__", "ggggg"]);
+    const opp = tplayer(OPP, true, ["g____", "ggggg"]);
+    expect(settledOutcome(me, opp)).toBe("won");
+    expect(settledOutcome(opp, me)).toBe("lost");
+  });
+
+  test("equal greens broken by oranges", () => {
+    const me = tplayer(ME, true, ["g_ooo", "ggggg"]);
+    const opp = tplayer(OPP, true, ["g_o__", "ggggg"]);
+    expect(settledOutcome(me, opp)).toBe("won");
+  });
+
+  test("genuinely identical boards are a tie", () => {
+    const me = tplayer(ME, true, ["g_o__", "ggggg"]);
+    const opp = tplayer(OPP, true, ["g_o__", "ggggg"]);
+    expect(settledOutcome(me, opp)).toBe("tie");
+  });
+
+  test("neither solved: closer board wins on tiles", () => {
+    const me = tplayer(ME, false, ["gg___", "gg_o_", "gg_o_"]);
+    const opp = tplayer(OPP, false, ["g____", "g__o_", "g____"]);
+    expect(settledOutcome(me, opp)).toBe("won");
+  });
+});
+
+describe("transcriptOutcomeFor", () => {
+  test("tile-tiebreak win reads as Won, not Draw", () => {
+    const t = transcript(
+      tplayer(ME, true, ["ggg__", "ggggg"]),
+      tplayer(OPP, true, ["g____", "ggggg"]),
+    );
+    expect(transcriptOutcomeFor(t, ME)).toBe("won");
+    expect(transcriptOutcomeFor(t, OPP)).toBe("lost");
+  });
+
+  test("true tie reads as Draw", () => {
+    const t = transcript(
+      tplayer(ME, true, ["g_o__", "ggggg"]),
+      tplayer(OPP, true, ["g_o__", "ggggg"]),
+    );
+    expect(transcriptOutcomeFor(t, ME)).toBe("draw");
+  });
+
+  test("solo settled game: solved is a win", () => {
+    const t = transcript(tplayer(ME, true, ["ggggg"]));
+    expect(transcriptOutcomeFor(t, ME)).toBe("won");
+  });
+
+  test("non-participant returns null", () => {
+    const t = transcript(
+      tplayer(ME, true, ["ggggg"]),
+      tplayer(OPP, false, ["_____"]),
+    );
+    expect(transcriptOutcomeFor(t, "0xcccc")).toBeNull();
   });
 });
 
