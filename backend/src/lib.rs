@@ -65,12 +65,6 @@ struct ErrorResponse {
     error: String,
 }
 
-#[derive(Deserialize, ToSchema)]
-struct EventRequest {
-    wallet: String,
-    kind: String,
-}
-
 #[utoipa::path(
     get,
     path = "/api/game",
@@ -786,37 +780,6 @@ async fn get_config<R: GameRepository>(State(state): State<Arc<AppState<R>>>) ->
     }
 }
 
-#[utoipa::path(
-    post,
-    path = "/api/event",
-    request_body = EventRequest,
-    responses(
-        (status = 204, description = "Event recorded"),
-        (status = 400, description = "Invalid request", body = ErrorResponse),
-        (status = 500, description = "Internal error", body = ErrorResponse),
-    )
-)]
-async fn post_event<R: GameRepository>(
-    State(state): State<Arc<AppState<R>>>,
-    Json(req): Json<EventRequest>,
-) -> impl IntoResponse {
-    let normalized = req.wallet.trim();
-    let stripped = normalized.strip_prefix("0x").unwrap_or(normalized);
-    if stripped.len() != 40 || !stripped.chars().all(|c| c.is_ascii_hexdigit()) {
-        return err_response(StatusCode::BAD_REQUEST, "invalid wallet").into_response();
-    }
-    if req.kind.is_empty() || req.kind.len() > 32 {
-        return err_response(StatusCode::BAD_REQUEST, "invalid kind").into_response();
-    }
-    match state.repo.record_event(normalized, &req.kind).await {
-        Ok(()) => StatusCode::NO_CONTENT.into_response(),
-        Err(e) => {
-            error!("record_event failed: {e}");
-            err_response(StatusCode::INTERNAL_SERVER_ERROR, "internal error").into_response()
-        }
-    }
-}
-
 #[derive(OpenApi)]
 #[openapi(
     info(
@@ -828,7 +791,6 @@ async fn post_event<R: GameRepository>(
         get_config,
         get_game,
         post_guess,
-        post_event,
         get_leaderboard,
         get_daily_leaderboard,
         get_pvp_game,
@@ -839,7 +801,6 @@ async fn post_event<R: GameRepository>(
         GameResponse,
         GuessRequest,
         GuessResponse,
-        EventRequest,
         ErrorResponse,
         game::LetterResult,
         ContractConfig,
@@ -875,7 +836,6 @@ pub fn build_router<R: GameRepository>(
             get(get_pvp_transcript::<R>),
         )
         .route("/api/guess", post(post_guess::<R>))
-        .route("/api/event", post(post_event::<R>))
         .route("/api/leaderboard", get(get_leaderboard::<R>))
         .route("/api/leaderboard/daily", get(get_daily_leaderboard::<R>))
         .with_state(state)
