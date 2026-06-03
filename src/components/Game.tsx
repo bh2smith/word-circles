@@ -425,7 +425,11 @@ export default function Game() {
 
       {/* Hint + Submit below keyboard */}
       <div className="flex items-start justify-between w-full max-w-lg gap-2">
-        <HintPanel guesses={guesses} onSelectWord={setCurrentGuess} />
+        <HintPanel
+          guesses={guesses}
+          onSelectWord={setCurrentGuess}
+          revealWords={false}
+        />
         {status === "playing" && (
           <button
             onClick={submitGuess}

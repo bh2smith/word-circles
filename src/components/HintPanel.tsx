@@ -7,13 +7,31 @@ import { filterRemainingWords } from "@/lib/hints";
 interface HintPanelProps {
   guesses: GuessResult[];
   onSelectWord: (word: string) => void;
+  // When false, only the count of remaining words is shown — the expandable
+  // list of clickable words (which lets you fill in a guess) is suppressed. The
+  // daily game disables it so the count is informational but no hint is given.
+  revealWords?: boolean;
 }
 
-export default function HintPanel({ guesses, onSelectWord }: HintPanelProps) {
+export default function HintPanel({
+  guesses,
+  onSelectWord,
+  revealWords = true,
+}: HintPanelProps) {
   const [open, setOpen] = useState(false);
   const remaining = useMemo(() => filterRemainingWords(guesses), [guesses]);
 
   if (guesses.length === 0) return null;
+
+  // Count only — show how many words remain but don't reveal which.
+  if (!revealWords) {
+    return (
+      <span className="flex items-center gap-2 px-3 py-2 text-sm text-neutral-400">
+        {remaining.length.toLocaleString()} possible word
+        {remaining.length !== 1 ? "s" : ""} left
+      </span>
+    );
+  }
 
   return (
     <>
