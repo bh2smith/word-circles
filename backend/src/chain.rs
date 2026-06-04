@@ -46,8 +46,9 @@ pub struct ContractConfig {
     /// Per-player play window before a forced timeout, in seconds.
     #[serde(rename = "timeoutSecs", skip_serializing_if = "Option::is_none")]
     pub timeout_secs: Option<u32>,
-    /// Configured PvP lobbies (one per supported group). The frontend filters
-    /// these by `botFunded` and the player's group memberships before showing PvP.
+    /// Configured PvP lobbies (one per supported group). The frontend shows the
+    /// ones the player is a group member of; each lobby's `botFunded` flag drives
+    /// a "no bot backstop" warning rather than hiding the lobby.
     pub lobbies: Vec<LobbyConfig>,
 }
 

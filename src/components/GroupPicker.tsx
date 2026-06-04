@@ -5,7 +5,7 @@ import { fetchCirclesProfiles, type CirclesProfile } from "@/lib/circles";
 import type { LobbyConfig } from "@/lib/api";
 
 interface GroupPickerProps {
-  // Already filtered to bot-funded ∩ membership by usePvpLobbies — the picker
+  // Already filtered to the player's memberships by usePvpLobbies — the picker
   // does no fetching of its own beyond group profiles (name + avatar).
   lobbies: LobbyConfig[];
   selected: LobbyConfig | null;

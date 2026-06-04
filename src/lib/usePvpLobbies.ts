@@ -21,7 +21,11 @@ export interface PvpLobbies {
   config: ContractConfig | null;
   /** True once the /api/config fetch has resolved (regardless of outcome). */
   configLoaded: boolean;
-  /** Lobbies the player can actually enter: bot-funded ∩ their memberships. */
+  /**
+   * Lobbies the player can enter: their group memberships. Each carries a live
+   * `botFunded` flag — false means no bot backstop, so the pre-match screen
+   * warns a human opponent may take a while (it no longer hides the lobby).
+   */
   visible: LobbyConfig[];
   /** Raw group memberships (lowercase 0x), or null until resolved. */
   memberships: string[] | null;
@@ -36,10 +40,10 @@ export interface PvpLobbies {
 }
 
 // Per-user PvP visibility, superseding the static `usePvpEnabled`. Combines the
-// backend's master `pvpEnabled` switch, the live per-lobby `botFunded` flag, and
-// the player's Circles group memberships into the set of lobbies they can enter.
-// An empty set means PvP is hidden entirely (no tab, no /pvp) — the bot-funded ∩
-// membership filter governs only what we display, never who you play against.
+// backend's master `pvpEnabled` switch and the player's Circles group
+// memberships into the set of lobbies they can enter. An empty set means PvP is
+// hidden entirely (no tab, no /pvp). The per-lobby `botFunded` flag rides along
+// but no longer filters: it drives a "no bot backstop" warning, not visibility.
 //
 // Keys off the connected wallet, which in the miniapp arrives via onWalletChange
 // shortly after load; until both config and memberships resolve it returns
@@ -97,10 +101,12 @@ export function usePvpLobbies(): PvpLobbies {
     if (!config || !memberships) return [];
     const member = new Set(memberships);
     // config.group is already lowercase 0x hex (backend token_key); memberships
-    // are lowercased in fetchGroupMemberships.
-    return config.lobbies.filter(
-      (l) => l.botFunded && member.has(l.group.toLowerCase()),
-    );
+    // are lowercased in fetchGroupMemberships. We filter on membership only — a
+    // member can always enter their lobby. `botFunded` no longer gates
+    // visibility (which would hide PvP, and History with it, whenever the bot
+    // ran dry); instead each lobby keeps its flag and the pre-match screen warns
+    // when there's no bot backstop so a human opponent may take a while.
+    return config.lobbies.filter((l) => member.has(l.group.toLowerCase()));
   }, [config, memberships]);
 
   let pvpEnabled: boolean | undefined;

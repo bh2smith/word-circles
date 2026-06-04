@@ -532,7 +532,7 @@ export default function PvpGame() {
     // Memberships still resolving — stay on loading rather than flashing the
     // lobby (matches the dark-by-default behaviour of the tab gate).
     if (pvpEnabled === undefined) return loadingScreen;
-    // No bot-funded lobby the player is a member of — nothing to enter.
+    // No lobby the player is a member of — nothing to enter.
     if (!selectedLobby) return unavailableScreen;
     return (
       <div className="flex flex-col items-center gap-5 text-white px-4 text-center max-w-md">
@@ -546,6 +546,14 @@ export default function PvpGame() {
           Stake {stakeLabel} and race an opponent on the same word. Fewest
           guesses wins the pot.
         </p>
+        {!selectedLobby.botFunded && (
+          // No bot backstop on this lobby right now — the match relies on a
+          // human opponent showing up, which can take a while.
+          <p className="text-sm text-amber-400">
+            ⚠️ No bot is covering this lobby right now — it may be a while
+            before an opponent joins.
+          </p>
+        )}
         <button
           onClick={findMatch}
           className="px-6 py-2.5 rounded-lg bg-green-600 font-bold hover:bg-green-500 transition-colors"
