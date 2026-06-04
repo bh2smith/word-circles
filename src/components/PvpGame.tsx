@@ -704,13 +704,24 @@ export default function PvpGame() {
         </>
       )}
 
-      {phase === "finished" && settled && (
-        <button
-          onClick={resetToLobby}
-          className="px-6 py-2.5 rounded-lg bg-green-600 font-bold hover:bg-green-500 transition-colors"
-        >
-          Play Again
-        </button>
+      {phase === "finished" && (
+        <div className="flex flex-col items-center gap-2">
+          <button
+            onClick={resetToLobby}
+            className="px-6 py-2.5 rounded-lg bg-green-600 font-bold hover:bg-green-500 transition-colors"
+          >
+            Play Again
+          </button>
+          {!settled && (
+            // You've finished your board; the match is still settling on-chain.
+            // Don't make the player wait — let them start a new game now. The
+            // old one keeps settling and its result shows up on the history page.
+            <p className="text-neutral-500 text-xs text-center max-w-xs">
+              You can start a new game now — this one finishes settling in the
+              background and its result lands in your history.
+            </p>
+          )}
+        </div>
       )}
     </div>
   );
