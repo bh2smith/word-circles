@@ -14,6 +14,7 @@ import {
   transcriptOutcomeFor,
   type HistoryOutcome,
 } from "@/lib/pvpHistory";
+import { usePvpEnabled } from "@/lib/usePvpEnabled";
 
 type Tab = "ongoing" | "won" | "lost";
 
@@ -78,6 +79,10 @@ function GameRow({
 }
 
 export default function PvpHistory() {
+  // Same both-sides gate as the nav and the /pvp page: only render history when
+  // the frontend opted in AND the backend reports PvP live. A direct visit to
+  // /pvp/history (the nav link is hidden) otherwise still exposed the feature.
+  const pvpEnabled = usePvpEnabled();
   const [walletAddress, setWalletAddress] = useState<string | null>(
     getConnectedAddress(),
   );
@@ -136,6 +141,19 @@ export default function PvpHistory() {
       active = false;
     };
   }, [games, walletAddress]);
+
+  // Stay hidden while the gate resolves (undefined), then show the standard
+  // unavailable copy when PvP is off — matching PvpGame's fallback.
+  if (pvpEnabled === undefined) {
+    return <p className="text-neutral-400 animate-pulse">Loading…</p>;
+  }
+  if (!pvpEnabled) {
+    return (
+      <div className="text-center text-neutral-400 px-4">
+        PvP isn&apos;t available right now. Check back soon.
+      </div>
+    );
+  }
 
   if (!walletAddress) {
     return (
