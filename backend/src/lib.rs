@@ -33,9 +33,35 @@ struct AppState<R: GameRepository> {
 }
 
 #[derive(Serialize, ToSchema)]
+struct PlayerGuess {
+    word: String,
+    results: Vec<game::LetterResult>,
+}
+
+#[derive(Serialize, ToSchema)]
 struct GameResponse {
     #[serde(rename = "gameId")]
     game_id: u32,
+    /// Player's recorded guesses for this game, in order. Only populated when
+    /// `?player=` is provided. An empty vec means the player hasn't guessed yet.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    guesses: Option<Vec<PlayerGuess>>,
+    /// "playing" | "won" | "lost" derived from `guesses`. Only set when
+    /// `?player=` is provided.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    status: Option<String>,
+    /// The day's answer, only revealed once the player's game is over (won or
+    /// lost). Withheld while they're still playing.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    answer: Option<String>,
+}
+
+#[derive(Deserialize, IntoParams)]
+struct GameQuery {
+    /// 0x-prefixed player address. When provided, the response includes the
+    /// player's recorded guesses so a client with no local state can rehydrate.
+    #[serde(default)]
+    player: Option<String>,
 }
 
 #[derive(Deserialize, ToSchema)]
@@ -68,20 +94,25 @@ struct ErrorResponse {
 #[utoipa::path(
     get,
     path = "/api/game",
+    params(GameQuery),
     responses(
         (status = 200, description = "Current daily game", body = GameResponse),
         (status = 500, description = "Internal error", body = ErrorResponse),
     )
 )]
-async fn get_game<R: GameRepository>(State(state): State<Arc<AppState<R>>>) -> impl IntoResponse {
+async fn get_game<R: GameRepository>(
+    State(state): State<Arc<AppState<R>>>,
+    Query(query): Query<GameQuery>,
+) -> impl IntoResponse {
     let game_id = game::get_game_id();
     let game_id_str = game_id.to_string();
-    debug!(game_id, "GET /api/game");
+    debug!(game_id, player = ?query.player, "GET /api/game");
+
+    let word_index = game::answer_index(game_id);
 
     match state.repo.get_game(&game_id_str).await {
         Ok(Some(_)) => {}
         Ok(None) => {
-            let word_index = game::answer_index(game_id);
             let salt = game::generate_salt();
             let commitment = game::compute_commitment(game_id, word_index, &salt);
             let record = GameRecord {
@@ -128,9 +159,83 @@ async fn get_game<R: GameRepository>(State(state): State<Arc<AppState<R>>>) -> i
         }
     }
 
+    // No player → return just the gameId (back-compat for clients that haven't
+    // updated). With a player → look up their recorded guesses so a client with
+    // lost localStorage can rehydrate from server state.
+    let response = match query.player.as_deref() {
+        None => GameResponse {
+            game_id,
+            guesses: None,
+            status: None,
+            answer: None,
+        },
+        Some(addr) => {
+            let player = match state.repo.get_or_create_player(addr).await {
+                Ok(p) => p,
+                Err(e) => {
+                    // Degrade to gameId-only — the client can still render a
+                    // fresh board even if hydration failed.
+                    error!("Failed to resolve player {addr}: {e}");
+                    return (
+                        StatusCode::OK,
+                        Json(
+                            serde_json::to_value(GameResponse {
+                                game_id,
+                                guesses: None,
+                                status: None,
+                                answer: None,
+                            })
+                            .unwrap(),
+                        ),
+                    );
+                }
+            };
+
+            let stored = state
+                .repo
+                .get_guesses(&game_id_str, player.id)
+                .await
+                .unwrap_or_default();
+
+            let mut player_guesses = Vec::with_capacity(stored.len());
+            let mut won = false;
+            for g in &stored {
+                let results: Vec<game::LetterResult> =
+                    serde_json::from_str(&g.results).unwrap_or_default();
+                if g.is_correct {
+                    won = true;
+                }
+                player_guesses.push(PlayerGuess {
+                    word: g.word.clone(),
+                    results,
+                });
+            }
+            let game_over = won || stored.len() >= game::MAX_GUESSES;
+            let status = if won {
+                "won"
+            } else if game_over {
+                "lost"
+            } else {
+                "playing"
+            };
+            let answer = if game_over {
+                Some(game::get_answer_by_index(word_index).to_string())
+            } else {
+                None
+            };
+
+            GameResponse {
+                game_id,
+                guesses: Some(player_guesses),
+                status: Some(status.to_string()),
+                answer,
+            }
+        }
+    };
+
     (
         StatusCode::OK,
-        Json(serde_json::to_value(GameResponse { game_id }).unwrap()),
+        Json(serde_json::to_value(response).unwrap()),
     )
 }
 
@@ -336,8 +441,13 @@ async fn post_guess<R: GameRepository>(
                 created_at: None,
             };
             if let Err(e) = state.repo.record_guess(&guess_record).await {
-                error!("Failed to record guess for game {game_id_str}: {e}");
-                return err_response(StatusCode::INTERNAL_SERVER_ERROR, "Failed to record guess");
+                // A stale-state client (lost localStorage after some guesses
+                // were already recorded) will collide on UNIQUE(game_id,
+                // player_id, guess_number). The evaluation itself is still
+                // correct, so log and let the response through rather than
+                // soft-bricking the player. New clients hydrate from
+                // GET /api/game?player= and won't hit this path.
+                tracing::warn!("Failed to record guess for game {game_id_str}: {e}");
             }
         }
     }

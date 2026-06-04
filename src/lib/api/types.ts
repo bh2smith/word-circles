@@ -183,8 +183,23 @@ export interface components {
             error: string;
         };
         GameResponse: {
+            /**
+             * @description The day's answer, only revealed once the player's game is over (won or
+             *     lost). Withheld while they're still playing.
+             */
+            answer?: string | null;
             /** Format: int32 */
             gameId: number;
+            /**
+             * @description Player's recorded guesses for this game, in order. Only populated when
+             *     `?player=` is provided. An empty vec means the player hasn't guessed yet.
+             */
+            guesses?: components["schemas"]["PlayerGuess"][] | null;
+            /**
+             * @description "playing" | "won" | "lost" derived from `guesses`. Only set when
+             *     `?player=` is provided.
+             */
+            status?: string | null;
         };
         GuessRequest: {
             gameId: string;
@@ -211,6 +226,10 @@ export interface components {
         };
         /** @enum {string} */
         LetterResult: "correct" | "present" | "absent";
+        PlayerGuess: {
+            results: components["schemas"]["LetterResult"][];
+            word: string;
+        };
         PvpGameResponse: {
             answer?: string | null;
             /** Format: int32 */
@@ -285,7 +304,13 @@ export interface operations {
     };
     get_game: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description 0x-prefixed player address. When provided, the response includes the
+                 *     player's recorded guesses so a client with no local state can rehydrate.
+                 */
+                player?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;

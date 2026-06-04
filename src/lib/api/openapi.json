@@ -41,6 +41,20 @@
       "get": {
         "tags": [],
         "operationId": "get_game",
+        "parameters": [
+          {
+            "name": "player",
+            "in": "query",
+            "description": "0x-prefixed player address. When provided, the response includes the\nplayer's recorded guesses so a client with no local state can rehydrate.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Current daily game",
@@ -500,10 +514,34 @@
           "gameId"
         ],
         "properties": {
+          "answer": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The day's answer, only revealed once the player's game is over (won or\nlost). Withheld while they're still playing."
+          },
           "gameId": {
             "type": "integer",
             "format": "int32",
             "minimum": 0
+          },
+          "guesses": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/PlayerGuess"
+            },
+            "description": "Player's recorded guesses for this game, in order. Only populated when\n`?player=` is provided. An empty vec means the player hasn't guessed yet."
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "\"playing\" | \"won\" | \"lost\" derived from `guesses`. Only set when\n`?player=` is provided."
           }
         }
       },
@@ -601,6 +639,24 @@
           "present",
           "absent"
         ]
+      },
+      "PlayerGuess": {
+        "type": "object",
+        "required": [
+          "word",
+          "results"
+        ],
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LetterResult"
+            }
+          },
+          "word": {
+            "type": "string"
+          }
+        }
       },
       "PvpGameResponse": {
         "type": "object",

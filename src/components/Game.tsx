@@ -81,35 +81,79 @@ export default function Game() {
     "idle" | "recording" | "recorded" | "error"
   >("idle");
 
-  // Load game state, fetch current game ID, and subscribe to wallet
+  // Subscribe to wallet + load cached stats on mount. Game state fetch lives in
+  // a separate effect so it can re-run when the wallet address resolves.
   useEffect(() => {
     initCircles();
     const unsubscribe = subscribeWallet(setWalletAddress);
-    const savedStats = loadStats();
-    setStats(savedStats);
-
-    fetch("/api/game")
-      .then((r) => r.json())
-      .then(({ gameId: serverGameId }) => {
-        const saved = loadGame();
-        if (saved && saved.gameId === serverGameId) {
-          setGameId(saved.gameId);
-          setGuesses(saved.guesses);
-          setStatus(saved.status);
-          setAnswer(saved.answer);
-          if (saved.status !== "playing") {
-            setTimeout(() => setShowStats(true), 500);
-          }
-        } else {
-          setGameId(serverGameId);
-          setGuesses([]);
-          setStatus("playing");
-          setAnswer(undefined);
-        }
-      });
-
+    setStats(loadStats());
     return unsubscribe;
   }, []);
+
+  // Fetch game state. When a wallet is available we ask the server for the
+  // player's recorded guesses and use them as source of truth — localStorage
+  // can be lost (private browsing, ITP, in-app webview), and falling back to a
+  // blank board left players unable to submit because the next guess collided
+  // on the server's UNIQUE(game_id, player_id, guess_number) constraint.
+  useEffect(() => {
+    let cancelled = false;
+    const url = walletAddress
+      ? `/api/game?player=${encodeURIComponent(walletAddress)}`
+      : "/api/game";
+
+    fetch(url)
+      .then((r) => r.json())
+      .then(
+        (data: {
+          gameId: number;
+          guesses?: GuessResult[];
+          status?: "playing" | "won" | "lost";
+          answer?: string;
+        }) => {
+          if (cancelled) return;
+          setGameId(data.gameId);
+
+          if (walletAddress && data.guesses !== undefined) {
+            const serverStatus = data.status ?? "playing";
+            setGuesses(data.guesses);
+            setStatus(serverStatus);
+            setAnswer(data.answer);
+            if (data.guesses.length > 0) {
+              saveGame({
+                gameId: data.gameId,
+                guesses: data.guesses,
+                status: serverStatus,
+                answer: data.answer,
+              });
+            }
+            if (serverStatus !== "playing") {
+              setTimeout(() => setShowStats(true), 500);
+            }
+            return;
+          }
+
+          // No wallet yet — fall back to local cache for visual continuity
+          // (submitting a guess requires a wallet anyway).
+          const saved = loadGame();
+          if (saved && saved.gameId === data.gameId) {
+            setGuesses(saved.guesses);
+            setStatus(saved.status);
+            setAnswer(saved.answer);
+            if (saved.status !== "playing") {
+              setTimeout(() => setShowStats(true), 500);
+            }
+          } else {
+            setGuesses([]);
+            setStatus("playing");
+            setAnswer(undefined);
+          }
+        },
+      );
+
+    return () => {
+      cancelled = true;
+    };
+  }, [walletAddress]);
 
   // Check contract for duplicate play when wallet and gameId are available
   useEffect(() => {
