@@ -172,8 +172,9 @@ export interface components {
             commitmentAddress: string;
             escrowAddress?: string | null;
             /**
-             * @description Configured PvP lobbies (one per supported group). The frontend filters
-             *     these by `botFunded` and the player's group memberships before showing PvP.
+             * @description Configured PvP lobbies (one per supported group). The frontend shows the
+             *     ones the player is a group member of; each lobby's `botFunded` flag drives
+             *     a "no bot backstop" warning rather than hiding the lobby.
              */
             lobbies: components["schemas"]["LobbyConfig"][];
             pvpEnabled: boolean;
