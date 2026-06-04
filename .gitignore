@@ -33,6 +33,10 @@
 # misc
 .DS_Store
 *.pem
+*.dump
+
+# local Claude Code config + project skills (not shared via git)
+.claude
 
 # generated Dune upload artifacts (rebuilt by dune/scripts/build_circles_names.py;
 # the Dune table is the source of truth)
