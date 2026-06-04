@@ -111,44 +111,31 @@
           "service": "api"
         },
         "title": "Enable PvP Mode",
-        "description": "Enable PvP matchmaking, escrow games, and related endpoints (requires resolver wallet + the PvP token/amount below)",
+        "description": "Enable PvP matchmaking, escrow games, and related endpoints (requires resolver wallet + the PvP lobbies below)",
         "required": false,
         "default": "false"
       },
       {
-        "id": "pvp_token",
+        "id": "pvp_lobbies",
         "target": {
           "type": "environment",
-          "name": "PVP_TOKEN",
+          "name": "PVP_LOBBIES",
           "service": "api"
         },
-        "title": "PvP Stake Token",
-        "description": "Address of the Circles ERC20 (inflation) token players stake to join a PvP game. Required when PvP is enabled.",
+        "title": "PvP Lobbies (JSON)",
+        "description": "JSON array of lobbies, one per Circles group: [{\"name\":\"WordGames\",\"group\":\"0x...\",\"token\":\"0x...\",\"amount\":\"100000000000000000\",\"capacity\":2}]. `token` is the group's s-gCRC wrapper; `amount` is the per-player stake in wei. Required when PvP is enabled.",
         "required": false
       },
       {
-        "id": "pvp_amount",
+        "id": "group_address",
         "target": {
           "type": "environment",
-          "name": "PVP_AMOUNT",
+          "name": "GROUP_ADDRESS",
           "service": "api"
         },
-        "title": "PvP Stake Amount (wei)",
-        "description": "Per-player stake in wei (18 decimals). Default is 1 token (1e18).",
-        "required": false,
-        "default": "1000000000000000000"
-      },
-      {
-        "id": "pvp_capacity",
-        "target": {
-          "type": "environment",
-          "name": "PVP_CAPACITY",
-          "service": "api"
-        },
-        "title": "PvP Players Per Game",
-        "description": "Number of players per PvP game (escrow lobby capacity). Must be >= 2.",
-        "required": false,
-        "default": "2"
+        "title": "Onboarding Group Address",
+        "description": "Circles BaseGroup players are trusted into via POST /api/group/join (after a daily win). The resolver EOA must be this group's owner/service (run setService(resolver) on the group once). Usually the first PvP lobby's group.",
+        "required": false
       },
       {
         "id": "bot_enabled",

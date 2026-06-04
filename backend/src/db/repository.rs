@@ -45,6 +45,13 @@ pub trait GameRepository: Send + Sync + 'static {
         address: &str,
     ) -> impl Future<Output = Result<PlayerRecord, RepositoryError>> + Send;
 
+    /// Whether the address has any recorded guess (daily or PvP) — i.e. has
+    /// actually played. Used to gate group onboarding against drive-by requests.
+    fn has_recorded_play(
+        &self,
+        address: &str,
+    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
+
     fn record_guess(
         &self,
         guess: &GuessRecord,

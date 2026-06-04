@@ -8,6 +8,7 @@ import HintPanel from "./HintPanel";
 import StatsModal, { EMPTY_STATS, type Stats } from "./StatsModal";
 import InstructionsModal from "./InstructionsModal";
 import Leaderboard, { LeaderboardPanel } from "./Leaderboard";
+import GroupJoinPrompt from "./GroupJoinPrompt";
 import type { GuessResult, LetterResult } from "@/lib/game";
 import { MAX_GUESSES, WORD_LENGTH } from "@/lib/game";
 import type { GuessResponse, ErrorResponse } from "@/lib/api";
@@ -484,6 +485,12 @@ export default function Game() {
           </button>
         )}
       </div>
+
+      {/* Post-win: offer group onboarding to unlock PvP (renders nothing if
+          already a member / PvP already available / group not configured). */}
+      {status === "won" && walletAddress && (
+        <GroupJoinPrompt address={walletAddress} />
+      )}
 
       {/* Stats Modal */}
       <StatsModal

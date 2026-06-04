@@ -4,6 +4,7 @@ import {
   isMiniappMode,
   onWalletChange,
   sendTransactions,
+  signMessage,
   type Transaction,
 } from "@aboutcircles/miniapp-sdk";
 import { getAddress } from "viem";
@@ -151,7 +152,85 @@ export interface CirclesProfile {
 
 const profileCache = new Map<string, CirclesProfile>();
 
-const PROFILES_API = "https://rpc.aboutcircles.com/profiles/search/addresses";
+const CIRCLES_RPC = "https://rpc.aboutcircles.com";
+const PROFILES_API = `${CIRCLES_RPC}/profiles/search/addresses`;
+
+// The exact string the player signs to prove control of their address before
+// the backend trusts them into the group. Must match `group_join_message` in
+// backend/src/lib.rs byte-for-byte (lowercased address).
+export function groupJoinMessage(player: string): string {
+  return `Join Word Circles PvP group\nAddress: ${player.toLowerCase()}`;
+}
+
+// Onboards a player into the PvP group: signs a proof-of-control message (the
+// avatar is a Safe, so this is an ERC-1271 signature via the host) and asks the
+// backend (the group's service) to trust them on-chain. Server-side this also
+// requires a recorded play. Idempotent. Returns true on success. The new
+// membership takes a few seconds to index before the PvP gate (usePvpLobbies)
+// picks it up.
+export async function joinGroup(player: string): Promise<boolean> {
+  try {
+    // Default signatureType 'erc1271' → host EIP-191-hashes the message, which
+    // the backend verifies via the avatar's isValidSignature.
+    const { signature } = await signMessage(groupJoinMessage(player));
+    const res = await fetch("/api/group/join", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ player, signature }),
+    });
+    if (!res.ok) return false;
+    const body: { joined?: boolean } = await res.json();
+    return Boolean(body.joined);
+  } catch {
+    // User rejected the signature, or the request failed.
+    return false;
+  }
+}
+
+interface GroupMembershipRow {
+  group: string;
+  member: string;
+  // ms? no — seconds since epoch; sentinel huge value = never expires.
+  expiryTime: number;
+}
+
+// Group avatars an address is currently a member of (lowercase), via the Circles
+// JSON-RPC `circles_getGroupMemberships`. This is a JSON-RPC method (not a
+// contract call), so it mirrors the fetch-based `fetchCirclesProfiles` rather
+// than a viem readContract. Expired memberships are filtered out. A single
+// request with a generous limit covers any realistic per-user membership count,
+// so we don't paginate. Best-effort: returns [] on any error so PvP simply
+// stays hidden rather than erroring.
+export async function fetchGroupMemberships(
+  address: string,
+): Promise<string[]> {
+  try {
+    const res = await fetch(CIRCLES_RPC, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "circles_getGroupMemberships",
+        params: [address, 100],
+      }),
+    });
+    if (!res.ok) return [];
+    const body: { result?: { results?: GroupMembershipRow[] } } =
+      await res.json();
+    const rows = body.result?.results ?? [];
+    const nowSecs = Math.floor(Date.now() / 1000);
+    const groups = new Set<string>();
+    for (const row of rows) {
+      if (row.expiryTime > nowSecs && row.group) {
+        groups.add(row.group.toLowerCase());
+      }
+    }
+    return [...groups];
+  } catch {
+    return [];
+  }
+}
 
 export async function fetchCirclesProfiles(
   addresses: string[],

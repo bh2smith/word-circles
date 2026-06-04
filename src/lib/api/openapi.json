@@ -248,6 +248,84 @@
         }
       }
     },
+    "/api/group/join": {
+      "post": {
+        "tags": [],
+        "operationId": "post_group_join",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GroupJoinRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Player onboarded into the group",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupJoinResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid player address or signature",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Signature does not match player",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "No recorded play for this address",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Trust transaction failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Group onboarding not configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/guess": {
       "post": {
         "tags": [],
@@ -418,25 +496,10 @@
         "required": [
           "resolver",
           "commitmentAddress",
-          "pvpEnabled"
+          "pvpEnabled",
+          "lobbies"
         ],
         "properties": {
-          "amount": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Per-player stake (wei, as a decimal string) for `escrow.join`."
-          },
-          "capacity": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int32",
-            "description": "Number of players per PvP game (the escrow lobby capacity).",
-            "minimum": 0
-          },
           "commitmentAddress": {
             "type": "string"
           },
@@ -445,6 +508,13 @@
               "string",
               "null"
             ]
+          },
+          "lobbies": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LobbyConfig"
+            },
+            "description": "Configured PvP lobbies (one per supported group). The frontend filters\nthese by `botFunded` and the player's group memberships before showing PvP."
           },
           "pvpEnabled": {
             "type": "boolean"
@@ -466,13 +536,6 @@
             "format": "int32",
             "description": "Per-player play window before a forced timeout, in seconds.",
             "minimum": 0
-          },
-          "token": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Circles token a player must stake to join a PvP game."
           }
         }
       },
@@ -542,6 +605,40 @@
               "null"
             ],
             "description": "\"playing\" | \"won\" | \"lost\" derived from `guesses`. Only set when\n`?player=` is provided."
+          }
+        }
+      },
+      "GroupJoinRequest": {
+        "type": "object",
+        "required": [
+          "player",
+          "signature"
+        ],
+        "properties": {
+          "player": {
+            "type": "string",
+            "description": "Player address (0x-prefixed) to onboard into the PvP group."
+          },
+          "signature": {
+            "type": "string",
+            "description": "Hex signature over [`group_join_message`] proving control of `player`\n(ECDSA for an EOA, or an ERC-1271 contract signature for a Safe avatar)."
+          }
+        }
+      },
+      "GroupJoinResponse": {
+        "type": "object",
+        "required": [
+          "joined",
+          "alreadyMember"
+        ],
+        "properties": {
+          "alreadyMember": {
+            "type": "boolean",
+            "description": "True if they were already a member (no transaction was sent)."
+          },
+          "joined": {
+            "type": "boolean",
+            "description": "True once the player is trusted by the group (newly or already)."
           }
         }
       },
@@ -639,6 +736,46 @@
           "present",
           "absent"
         ]
+      },
+      "LobbyConfig": {
+        "type": "object",
+        "description": "A single PvP lobby: one Circles group's wrapper token and stake. The escrow\nis group-agnostic, so each lobby is an independent `(resolver, token, amount,\ncapacity)` bucket keyed on the wrapper token.",
+        "required": [
+          "name",
+          "group",
+          "token",
+          "amount",
+          "capacity",
+          "botFunded"
+        ],
+        "properties": {
+          "amount": {
+            "type": "string",
+            "description": "Per-player stake (wei, as a decimal string) for `escrow.join`."
+          },
+          "botFunded": {
+            "type": "boolean",
+            "description": "Live: the bot Safe holds ≥ 2× `amount` of `token` (headroom so two\nsimultaneous joiners are both covered). Stamped per-request from shared\nstate the bot refreshes each tick; `false` until the first tick."
+          },
+          "capacity": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Number of players per PvP game (the escrow lobby capacity).",
+            "minimum": 0
+          },
+          "group": {
+            "type": "string",
+            "description": "Group avatar address. Intersected with a player's Circles group\nmemberships to decide whether the lobby is shown to them."
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable group name, e.g. \"Gnosis\"."
+          },
+          "token": {
+            "type": "string",
+            "description": "s-gCRC wrapper token a player stakes to join this lobby."
+          }
+        }
       },
       "PlayerGuess": {
         "type": "object",

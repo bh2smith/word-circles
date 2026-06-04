@@ -1,4 +1,5 @@
-use std::sync::Arc;
+use std::collections::HashSet;
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 use tracing_subscriber::EnvFilter;
 use word_circles_backend::bot;
@@ -50,8 +51,14 @@ async fn main() {
             tracing::info!(
                 address = %client.address(),
                 commitment = %client.commitment_address,
+                group = ?client.group_address,
                 "Resolver wallet loaded"
             );
+            if client.group_address.is_some() {
+                tracing::info!(
+                    "Group onboarding enabled (resolver must be the group's owner/service)"
+                );
+            }
             Some(Arc::new(client))
         }
         Err(e) => {
@@ -110,38 +117,47 @@ async fn main() {
         }
     }
 
+    // Shared set of bot-funded lobby tokens. The bot writes it each tick; the
+    // /api/config handler reads it to stamp each lobby's `botFunded`. Empty until
+    // the first tick (safe default: nothing advertised as enterable yet).
+    let bot_funded: word_circles_backend::chain::FundedSet = Arc::new(RwLock::new(HashSet::new()));
+
     let bot_enabled = std::env::var("BOT_ENABLED")
         .map(|v| v == "true" || v == "1")
         .unwrap_or(false);
 
     if bot_enabled && pvp_enabled {
         match resolver.as_ref() {
-            Some(resolver) => match bot::BotClient::from_env(resolver.address()).await {
-                Ok(client) => {
-                    let join_delay: u64 = std::env::var("BOT_JOIN_DELAY_SECS")
-                        .ok()
-                        .and_then(|s| s.parse().ok())
-                        .unwrap_or(60);
-                    let poll_secs: u64 = std::env::var("BOT_POLL_SECS")
-                        .ok()
-                        .and_then(|s| s.parse().ok())
-                        .unwrap_or(15);
-                    tracing::info!(bot = %client.address(), join_delay, "PvP bot enabled");
-                    let bot_repo = Arc::new(repo.clone());
-                    tokio::spawn(async move {
-                        bot::run(
-                            bot_repo,
-                            client,
-                            bot::BotConfig {
-                                poll_interval: Duration::from_secs(poll_secs),
-                                join_delay: Duration::from_secs(join_delay),
-                            },
-                        )
-                        .await;
-                    });
+            Some(resolver) => {
+                match bot::BotClient::from_env(resolver.address(), resolver.lobbies.clone()).await {
+                    Ok(client) => {
+                        let join_delay: u64 = std::env::var("BOT_JOIN_DELAY_SECS")
+                            .ok()
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(60);
+                        let poll_secs: u64 = std::env::var("BOT_POLL_SECS")
+                            .ok()
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(15);
+                        tracing::info!(bot = %client.address(), join_delay, "PvP bot enabled");
+                        let bot_repo = Arc::new(repo.clone());
+                        let bot_funded = bot_funded.clone();
+                        tokio::spawn(async move {
+                            bot::run(
+                                bot_repo,
+                                client,
+                                bot::BotConfig {
+                                    poll_interval: Duration::from_secs(poll_secs),
+                                    join_delay: Duration::from_secs(join_delay),
+                                },
+                                bot_funded,
+                            )
+                            .await;
+                        });
+                    }
+                    Err(e) => tracing::warn!("PvP bot not started: {e}"),
                 }
-                Err(e) => tracing::warn!("PvP bot not started: {e}"),
-            },
+            }
             None => tracing::warn!("BOT_ENABLED set but resolver not configured; bot not started"),
         }
     }
@@ -149,7 +165,7 @@ async fn main() {
     let contract_config = resolver
         .as_ref()
         .map(|r| r.config(pvp_enabled, pvp_timeout_secs));
-    let app = build_router(repo, contract_config, resolver);
+    let app = build_router(repo, contract_config, resolver, bot_funded);
 
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
     println!("Backend listening on {addr}");

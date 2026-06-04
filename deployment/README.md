@@ -26,13 +26,15 @@ This produces an `.xz` package you can sideload through the DAppNode admin UI.
 
 The DAppNode setup wizard prompts for these on install. They can also be changed later in the package config UI.
 
-| Variable               | Required | Default                                      | Description                                                                                  |
-| ---------------------- | -------- | -------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `RESOLVER_PRIVATE_KEY` | Yes      | —                                            | Hex-encoded private key for the resolver wallet. Signs commitments and settlements on-chain. |
-| `RPC_URL`              | No       | `http://gnosis-erigon.dappnode:8545`         | Gnosis RPC endpoint. Defaults to local Erigon.                                               |
-| `COMMITMENT_ADDRESS`   | No       | `0x6e99c40bd8b87290EB977336c4Be8b2106baB08f` | Deployed WordCommitment contract address.                                                    |
-| `STATS_ADDRESS`        | No       | `0xB96413584d7a4e07cc8c238cC4baA3474C956CCF` | Deployed WordCircleStats contract address.                                                   |
-| `PVP_ENABLED`          | No       | `false`                                      | Enable PvP matchmaking and escrow game preparation.                                          |
+| Variable               | Required | Default                                      | Description                                                                                                                |
+| ---------------------- | -------- | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `RESOLVER_PRIVATE_KEY` | Yes      | —                                            | Hex-encoded private key for the resolver wallet. Signs commitments and settlements on-chain.                               |
+| `RPC_URL`              | No       | `http://gnosis-erigon.dappnode:8545`         | Gnosis RPC endpoint. Defaults to local Erigon.                                                                             |
+| `COMMITMENT_ADDRESS`   | No       | `0x6e99c40bd8b87290EB977336c4Be8b2106baB08f` | Deployed WordCommitment contract address.                                                                                  |
+| `STATS_ADDRESS`        | No       | `0xB96413584d7a4e07cc8c238cC4baA3474C956CCF` | Deployed WordCircleStats contract address.                                                                                 |
+| `PVP_ENABLED`          | No       | `false`                                      | Master switch for PvP matchmaking and escrow game preparation.                                                             |
+| `PVP_LOBBIES`          | No       | —                                            | JSON array of per-group lobbies (see [docs/multi-group-pvp.md](../docs/multi-group-pvp.md)). Required when PvP is enabled. |
+| `GROUP_ADDRESS`        | No       | —                                            | Circles group players are trusted into via `POST /api/group/join`. Resolver must be its owner/service.                     |
 
 ## Funding the Resolver
 

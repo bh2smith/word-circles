@@ -14,7 +14,7 @@ use axum::{
     response::IntoResponse,
     routing::{get, post},
 };
-use chain::ContractConfig;
+use chain::{ContractConfig, FundedSet};
 use db::{
     models::{DailyResult, GamePlayerRecord, GameRecord, GuessRecord, LeaderboardEntry},
     repository::{GameRepository, RepositoryError},
@@ -30,6 +30,9 @@ struct AppState<R: GameRepository> {
     repo: R,
     contract_config: Option<ContractConfig>,
     resolver: Option<Arc<chain::ResolverClient>>,
+    /// Tokens the bot can currently fund (≥ 2× stake). Stamped onto each
+    /// lobby's `botFunded` in `get_config`; the bot refreshes it each tick.
+    bot_funded: FundedSet,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -877,7 +880,17 @@ async fn health() -> &'static str {
 async fn get_config<R: GameRepository>(State(state): State<Arc<AppState<R>>>) -> impl IntoResponse {
     debug!("GET /api/config");
     match &state.contract_config {
-        Some(config) => (StatusCode::OK, Json(serde_json::to_value(config).unwrap())),
+        Some(config) => {
+            // Stamp the live bot-funded flag per-request from shared state (no
+            // on-chain read here — the bot refreshes the set on its tick).
+            let mut config = config.clone();
+            if let Ok(funded) = state.bot_funded.read() {
+                for lobby in &mut config.lobbies {
+                    lobby.bot_funded = funded.contains(&lobby.token.to_lowercase());
+                }
+            }
+            (StatusCode::OK, Json(serde_json::to_value(config).unwrap()))
+        }
         None => (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(
@@ -887,6 +900,133 @@ async fn get_config<R: GameRepository>(State(state): State<Arc<AppState<R>>>) ->
                 .unwrap(),
             ),
         ),
+    }
+}
+
+#[derive(Deserialize, ToSchema)]
+struct GroupJoinRequest {
+    /// Player address (0x-prefixed) to onboard into the PvP group.
+    player: String,
+    /// Hex signature over [`group_join_message`] proving control of `player`
+    /// (ECDSA for an EOA, or an ERC-1271 contract signature for a Safe avatar).
+    signature: String,
+}
+
+/// The exact string a player signs to prove control of their address before we
+/// trust them into the group. The frontend must reproduce this byte-for-byte
+/// (lowercased address) — see `groupJoinMessage` in `src/lib/circles.ts`.
+fn group_join_message(player: &str) -> String {
+    format!(
+        "Join Word Circles PvP group\nAddress: {}",
+        player.to_lowercase()
+    )
+}
+
+#[derive(Serialize, ToSchema)]
+struct GroupJoinResponse {
+    /// True once the player is trusted by the group (newly or already).
+    joined: bool,
+    /// True if they were already a member (no transaction was sent).
+    #[serde(rename = "alreadyMember")]
+    already_member: bool,
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/group/join",
+    request_body = GroupJoinRequest,
+    responses(
+        (status = 200, description = "Player onboarded into the group", body = GroupJoinResponse),
+        (status = 400, description = "Invalid player address or signature", body = ErrorResponse),
+        (status = 401, description = "Signature does not match player", body = ErrorResponse),
+        (status = 403, description = "No recorded play for this address", body = ErrorResponse),
+        (status = 503, description = "Group onboarding not configured", body = ErrorResponse),
+        (status = 500, description = "Trust transaction failed", body = ErrorResponse),
+    )
+)]
+async fn post_group_join<R: GameRepository>(
+    State(state): State<Arc<AppState<R>>>,
+    Json(req): Json<GroupJoinRequest>,
+) -> impl IntoResponse {
+    debug!(player = %req.player, "POST /api/group/join");
+
+    if !is_valid_address(&req.player) {
+        return err_response(StatusCode::BAD_REQUEST, "Invalid player address");
+    }
+    let Ok(member) = req.player.parse() else {
+        return err_response(StatusCode::BAD_REQUEST, "Invalid player address");
+    };
+
+    let sig_hex = req.signature.strip_prefix("0x").unwrap_or(&req.signature);
+    let Ok(sig_bytes) = hex::decode(sig_hex) else {
+        return err_response(StatusCode::BAD_REQUEST, "Invalid signature encoding");
+    };
+
+    let Some(resolver) = &state.resolver else {
+        return err_response(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Group onboarding not configured",
+        );
+    };
+
+    // Anti-spam gate 1: prove control of the address (EOA or Safe/ERC-1271).
+    let message = group_join_message(&req.player);
+    match resolver
+        .verify_player_signature(member, &message, &sig_bytes)
+        .await
+    {
+        Ok(true) => {}
+        Ok(false) => {
+            return err_response(StatusCode::UNAUTHORIZED, "Signature does not match player");
+        }
+        Err(e) => {
+            error!("Signature verification failed for {}: {e}", req.player);
+            return err_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Could not verify signature",
+            );
+        }
+    }
+
+    // Anti-spam gate 2: only onboard addresses that have actually played.
+    match state.repo.has_recorded_play(&req.player).await {
+        Ok(true) => {}
+        Ok(false) => {
+            return err_response(
+                StatusCode::FORBIDDEN,
+                "Play a game before joining the group",
+            );
+        }
+        Err(e) => {
+            error!("has_recorded_play failed for {}: {e}", req.player);
+            return err_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to check play history",
+            );
+        }
+    }
+
+    match resolver.trust_group_member(member).await {
+        Ok(tx) => {
+            let already_member = tx.is_none();
+            if let Some(hash) = tx {
+                tracing::info!(player = %req.player, tx = %hash, "trusted player into group");
+            }
+            (
+                StatusCode::OK,
+                Json(
+                    serde_json::to_value(GroupJoinResponse {
+                        joined: true,
+                        already_member,
+                    })
+                    .unwrap(),
+                ),
+            )
+        }
+        Err(e) => {
+            error!("Failed to trust {} into group: {e}", req.player);
+            err_response(StatusCode::INTERNAL_SERVER_ERROR, "Failed to join group")
+        }
     }
 }
 
@@ -906,6 +1046,7 @@ async fn get_config<R: GameRepository>(State(state): State<Arc<AppState<R>>>) ->
         get_pvp_game,
         get_player_games,
         get_pvp_transcript,
+        post_group_join,
     ),
     components(schemas(
         GameResponse,
@@ -914,6 +1055,7 @@ async fn get_config<R: GameRepository>(State(state): State<Arc<AppState<R>>>) ->
         ErrorResponse,
         game::LetterResult,
         ContractConfig,
+        chain::LobbyConfig,
         LeaderboardEntry,
         DailyResult,
         PvpGameResponse,
@@ -921,6 +1063,8 @@ async fn get_config<R: GameRepository>(State(state): State<Arc<AppState<R>>>) ->
         PvpTranscript,
         PvpTranscriptPlayer,
         PvpTranscriptGuess,
+        GroupJoinRequest,
+        GroupJoinResponse,
     ))
 )]
 pub struct ApiDoc;
@@ -929,11 +1073,13 @@ pub fn build_router<R: GameRepository>(
     repo: R,
     contract_config: Option<ContractConfig>,
     resolver: Option<Arc<chain::ResolverClient>>,
+    bot_funded: FundedSet,
 ) -> Router {
     let state = Arc::new(AppState {
         repo,
         contract_config,
         resolver,
+        bot_funded,
     });
     Router::new()
         .route("/health", get(health))
@@ -946,6 +1092,7 @@ pub fn build_router<R: GameRepository>(
             get(get_pvp_transcript::<R>),
         )
         .route("/api/guess", post(post_guess::<R>))
+        .route("/api/group/join", post(post_group_join::<R>))
         .route("/api/leaderboard", get(get_leaderboard::<R>))
         .route("/api/leaderboard/daily", get(get_daily_leaderboard::<R>))
         .with_state(state)
@@ -955,8 +1102,18 @@ pub fn build_router<R: GameRepository>(
 
 #[cfg(test)]
 mod tests {
-    use super::{is_timed_out, parse_timestamp};
+    use super::{group_join_message, is_timed_out, parse_timestamp};
     use chrono::Utc;
+
+    #[test]
+    fn group_join_message_is_stable_and_lowercased() {
+        // Guards the exact bytes the frontend (groupJoinMessage in circles.ts)
+        // must reproduce — a change here breaks signature verification.
+        assert_eq!(
+            group_join_message("0xAbC0000000000000000000000000000000000001"),
+            "Join Word Circles PvP group\nAddress: 0xabc0000000000000000000000000000000000001"
+        );
+    }
 
     #[test]
     fn parses_postgres_timestamptz_text() {

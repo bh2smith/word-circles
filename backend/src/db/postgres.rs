@@ -150,6 +150,19 @@ impl GameRepository for PostgresRepository {
         })
     }
 
+    async fn has_recorded_play(&self, address: &str) -> Result<bool, RepositoryError> {
+        let bytes = decode_address(address);
+        let row: (bool,) = sqlx::query_as(
+            "SELECT EXISTS(SELECT 1 FROM guesses g \
+             JOIN players p ON g.player_id = p.id WHERE p.address = $1)",
+        )
+        .bind(&bytes)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| RepositoryError::Internal(e.to_string()))?;
+        Ok(row.0)
+    }
+
     async fn record_guess(&self, guess: &GuessRecord) -> Result<(), RepositoryError> {
         sqlx::query(
             "INSERT INTO guesses (game_id, player_id, guess_number, word, results, is_correct)

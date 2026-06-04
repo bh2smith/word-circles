@@ -8,6 +8,8 @@ import HintPanel from "./HintPanel";
 import OpponentStatus from "./OpponentStatus";
 import PvpResults from "./PvpResults";
 import PlayerProfile from "./PlayerProfile";
+import GroupPicker from "./GroupPicker";
+import { usePvpLobbies } from "@/lib/usePvpLobbies";
 import { formatUnits } from "viem";
 import type { GuessResult, LetterResult } from "@/lib/game";
 import { WORD_LENGTH } from "@/lib/game";
@@ -23,12 +25,16 @@ import {
 import { encodeApprove, encodeJoin } from "@/lib/contract";
 import { FRONTEND_PVP_ENABLED } from "@/lib/usePvpEnabled";
 import type {
-  ContractConfig,
+  LobbyConfig,
   PvpGameResponse,
   PvpTranscript,
   GuessResponse,
   ErrorResponse,
 } from "@/lib/api";
+
+// Remembers the last lobby the player joined so we pre-select it next time
+// (a lightweight "most recently played" — stake is uniform across lobbies).
+const LOBBY_KEY = "wordcircle-pvp-lobby";
 
 // Lobby lifecycle. Matchmaking is on-chain (escrow.join), so after submitting
 // we discover the assigned gameId from the backend, then poll until the game
@@ -71,11 +77,26 @@ function isPlayable(status: string | undefined): boolean {
 const GRACE_SECONDS = 5;
 
 export default function PvpGame() {
-  const [config, setConfig] = useState<ContractConfig | null>(null);
-  const [configLoaded, setConfigLoaded] = useState(false);
+  const { config, configLoaded, visible, pvpEnabled } = usePvpLobbies();
   const [walletAddress, setWalletAddress] = useState<string | null>(
     getConnectedAddress(),
   );
+
+  // The lobby the player will stake into. Defaults to the last-played token (if
+  // still visible) else the first visible lobby; falls back gracefully if the
+  // remembered lobby drops out (e.g. the bot ran dry on it).
+  const [selectedToken, setSelectedToken] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return localStorage.getItem(LOBBY_KEY);
+  });
+  const selectedLobby: LobbyConfig | null =
+    visible.find((l) => l.token === selectedToken) ?? visible[0] ?? null;
+
+  const selectLobby = useCallback((lobby: LobbyConfig) => {
+    setSelectedToken(lobby.token);
+    if (typeof window !== "undefined")
+      localStorage.setItem(LOBBY_KEY, lobby.token);
+  }, []);
 
   const [phase, setPhase] = useState<Phase | null>(null); // null = idle/lobby
   const [gameId, setGameId] = useState<string | null>(null);
@@ -102,11 +123,8 @@ export default function PvpGame() {
     initCircles();
     const unsubscribe = subscribeWallet(setWalletAddress);
 
-    fetch("/api/config")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((cfg: ContractConfig | null) => setConfig(cfg))
-      .catch(() => setConfig(null))
-      .finally(() => setConfigLoaded(true));
+    // Config + lobby visibility come from usePvpLobbies; here we only wire the
+    // wallet and resume any in-progress game.
 
     // A ?game=<id> param (e.g. from the history page) re-enters that specific
     // game. If it matches the locally-saved game we restore its guesses too;
@@ -201,10 +219,10 @@ export default function PvpGame() {
   );
 
   const findMatch = useCallback(async () => {
-    if (!config || !walletAddress) return;
-    const { escrowAddress, token, amount, resolver } = config;
-    const capacity = config.capacity ?? 2;
-    if (!escrowAddress || !token || !amount) {
+    if (!config || !walletAddress || !selectedLobby) return;
+    const { escrowAddress, resolver } = config;
+    const { token, amount, capacity } = selectedLobby;
+    if (!escrowAddress) {
       setToast("PvP is not configured");
       return;
     }
@@ -215,6 +233,8 @@ export default function PvpGame() {
       const joinData = encodeJoin(resolver, token, stake, capacity);
       const before = await fetchActiveGames(walletAddress);
       beforeIdsRef.current = new Set(before.map((g) => g.gameId));
+      // Remember this lobby for next time before the (slow) wallet round-trip.
+      selectLobby(selectedLobby);
       // Passing player + stake lets joinPvpGame mint the stake token from the
       // player's personal CRC when they don't already hold enough s-gCRC.
       await joinPvpGame({
@@ -239,7 +259,7 @@ export default function PvpGame() {
       }
       setPhase(null);
     }
-  }, [config, walletAddress, fetchActiveGames]);
+  }, [config, walletAddress, selectedLobby, selectLobby, fetchActiveGames]);
 
   // Discover the gameId assigned on-chain once the join is indexed.
   useEffect(() => {
@@ -437,32 +457,31 @@ export default function PvpGame() {
     </h1>
   );
 
-  if (!configLoaded) {
-    return (
-      <div className="flex flex-col items-center gap-4 text-white">
-        {title}
-        <p className="text-neutral-400">Loading…</p>
-      </div>
-    );
-  }
+  const loadingScreen = (
+    <div className="flex flex-col items-center gap-4 text-white">
+      {title}
+      <p className="text-neutral-400">Loading…</p>
+    </div>
+  );
 
-  const pvpAvailable =
-    FRONTEND_PVP_ENABLED &&
-    config?.pvpEnabled &&
-    config.escrowAddress &&
-    config.token &&
-    config.amount;
+  const unavailableScreen = (
+    <div className="flex flex-col items-center gap-4 text-white px-4 text-center">
+      {title}
+      <p className="text-neutral-400">
+        PvP isn&apos;t available right now. Check back soon.
+      </p>
+    </div>
+  );
 
-  if (!pvpAvailable) {
-    return (
-      <div className="flex flex-col items-center gap-4 text-white px-4 text-center">
-        {title}
-        <p className="text-neutral-400">
-          PvP isn&apos;t available right now. Check back soon.
-        </p>
-      </div>
-    );
-  }
+  // Config still in flight.
+  if (!configLoaded) return loadingScreen;
+
+  // Both sides must opt in: the frontend build-time flag AND the backend's
+  // runtime master switch (+ escrow configured). Either off → never enterable.
+  const masterOn = Boolean(
+    FRONTEND_PVP_ENABLED && config?.pvpEnabled && config?.escrowAddress,
+  );
+  if (!masterOn) return unavailableScreen;
 
   if (!walletAddress) {
     const standalone = !isMiniappMode();
@@ -489,10 +508,11 @@ export default function PvpGame() {
   }
 
   const stakeLabel = (() => {
+    if (!selectedLobby) return "the entry stake";
     try {
       // Circles tokens are 18 decimals. formatUnits keeps fractional stakes
       // (e.g. "0.1 CRC") instead of integer-dividing sub-1 amounts to "0 CRC".
-      return `${formatUnits(BigInt(config!.amount!), 18)} CRC`;
+      return `${formatUnits(BigInt(selectedLobby.amount), 18)} CRC`;
     } catch {
       return "the entry stake";
     }
@@ -509,9 +529,19 @@ export default function PvpGame() {
   );
 
   if (phase === null) {
+    // Memberships still resolving — stay on loading rather than flashing the
+    // lobby (matches the dark-by-default behaviour of the tab gate).
+    if (pvpEnabled === undefined) return loadingScreen;
+    // No bot-funded lobby the player is a member of — nothing to enter.
+    if (!selectedLobby) return unavailableScreen;
     return (
       <div className="flex flex-col items-center gap-5 text-white px-4 text-center max-w-md">
         {Header}
+        <GroupPicker
+          lobbies={visible}
+          selected={selectedLobby}
+          onSelect={selectLobby}
+        />
         <p className="text-neutral-400">
           Stake {stakeLabel} and race an opponent on the same word. Fewest
           guesses wins the pot.
@@ -551,7 +581,7 @@ export default function PvpGame() {
 
   if (phase === "waiting") {
     const joined = game?.players.length ?? 1;
-    const capacity = game?.capacity ?? config?.capacity ?? 2;
+    const capacity = game?.capacity ?? selectedLobby?.capacity ?? 2;
     return (
       <div className="flex flex-col items-center gap-4 text-white px-4 text-center max-w-md">
         {Header}

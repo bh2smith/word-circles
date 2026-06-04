@@ -16,6 +16,7 @@ export type LetterResult = Schemas["LetterResult"];
 export type LeaderboardEntry = Schemas["LeaderboardEntry"];
 export type DailyResult = Schemas["DailyResult"];
 export type ContractConfig = Schemas["ContractConfig"];
+export type LobbyConfig = Schemas["LobbyConfig"];
 export type PvpGameResponse = Schemas["PvpGameResponse"];
 export type PvpPlayerStatus = Schemas["PvpPlayerStatus"];
 export type PvpTranscript = Schemas["PvpTranscript"];

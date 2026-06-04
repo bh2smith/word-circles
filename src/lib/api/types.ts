@@ -84,6 +84,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/group/join": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["post_group_join"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/guess": {
         parameters: {
             query?: never;
@@ -153,15 +169,13 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         ContractConfig: {
-            /** @description Per-player stake (wei, as a decimal string) for `escrow.join`. */
-            amount?: string | null;
-            /**
-             * Format: int32
-             * @description Number of players per PvP game (the escrow lobby capacity).
-             */
-            capacity?: number | null;
             commitmentAddress: string;
             escrowAddress?: string | null;
+            /**
+             * @description Configured PvP lobbies (one per supported group). The frontend filters
+             *     these by `botFunded` and the player's group memberships before showing PvP.
+             */
+            lobbies: components["schemas"]["LobbyConfig"][];
             pvpEnabled: boolean;
             resolver: string;
             statsAddress?: string | null;
@@ -170,8 +184,6 @@ export interface components {
              * @description Per-player play window before a forced timeout, in seconds.
              */
             timeoutSecs?: number | null;
-            /** @description Circles token a player must stake to join a PvP game. */
-            token?: string | null;
         };
         DailyResult: {
             address: string;
@@ -201,6 +213,21 @@ export interface components {
              */
             status?: string | null;
         };
+        GroupJoinRequest: {
+            /** @description Player address (0x-prefixed) to onboard into the PvP group. */
+            player: string;
+            /**
+             * @description Hex signature over [`group_join_message`] proving control of `player`
+             *     (ECDSA for an EOA, or an ERC-1271 contract signature for a Safe avatar).
+             */
+            signature: string;
+        };
+        GroupJoinResponse: {
+            /** @description True if they were already a member (no transaction was sent). */
+            alreadyMember: boolean;
+            /** @description True once the player is trusted by the group (newly or already). */
+            joined: boolean;
+        };
         GuessRequest: {
             gameId: string;
             guess: string;
@@ -226,6 +253,35 @@ export interface components {
         };
         /** @enum {string} */
         LetterResult: "correct" | "present" | "absent";
+        /**
+         * @description A single PvP lobby: one Circles group's wrapper token and stake. The escrow
+         *     is group-agnostic, so each lobby is an independent `(resolver, token, amount,
+         *     capacity)` bucket keyed on the wrapper token.
+         */
+        LobbyConfig: {
+            /** @description Per-player stake (wei, as a decimal string) for `escrow.join`. */
+            amount: string;
+            /**
+             * @description Live: the bot Safe holds ≥ 2× `amount` of `token` (headroom so two
+             *     simultaneous joiners are both covered). Stamped per-request from shared
+             *     state the bot refreshes each tick; `false` until the first tick.
+             */
+            botFunded: boolean;
+            /**
+             * Format: int32
+             * @description Number of players per PvP game (the escrow lobby capacity).
+             */
+            capacity: number;
+            /**
+             * @description Group avatar address. Intersected with a player's Circles group
+             *     memberships to decide whether the lobby is shown to them.
+             */
+            group: string;
+            /** @description Human-readable group name, e.g. "Gnosis". */
+            name: string;
+            /** @description s-gCRC wrapper token a player stakes to join this lobby. */
+            token: string;
+        };
         PlayerGuess: {
             results: components["schemas"]["LetterResult"][];
             word: string;
@@ -462,6 +518,75 @@ export interface operations {
             };
             /** @description Internal error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    post_group_join: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GroupJoinRequest"];
+            };
+        };
+        responses: {
+            /** @description Player onboarded into the group */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupJoinResponse"];
+                };
+            };
+            /** @description Invalid player address or signature */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Signature does not match player */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No recorded play for this address */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Trust transaction failed */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Group onboarding not configured */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

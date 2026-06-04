@@ -1,43 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import type { ContractConfig } from "@/lib/api";
+import { usePvpLobbies } from "@/lib/usePvpLobbies";
 
-// Frontend build-time PvP gate. PvP only appears when BOTH this flag is set at
-// build time AND the backend reports pvpEnabled at runtime — both sides must
-// agree before any PvP UI shows. Set NEXT_PUBLIC_PVP_ENABLED=true to opt the
-// frontend in; leave it unset to ship the PvP code dark regardless of backend.
-export const FRONTEND_PVP_ENABLED =
-  process.env.NEXT_PUBLIC_PVP_ENABLED === "true";
+// Frontend build-time PvP opt-in (NEXT_PUBLIC_PVP_ENABLED). Defined in
+// usePvpLobbies so it's folded into the per-player gate once, and every PvP
+// surface (nav, /pvp, history, onboarding) honors it. Re-exported here for
+// callers that gate on the raw flag (e.g. PvpGame's master switch).
+export { FRONTEND_PVP_ENABLED } from "@/lib/usePvpLobbies";
 
-// Combined PvP rollout gate. The backend owns runtime availability via
-// /api/config (pvpEnabled); the frontend opts in via FRONTEND_PVP_ENABLED.
-// Both must be true, so the UI can never offer a feature the backend can't
-// serve, and the frontend can hold PvP back even when the backend is live.
-//
-// Returns `undefined` while loading so callers can stay hidden until both sides
-// are known (dark-by-default), then `true`/`false`. Short-circuits to `false`
-// without a fetch when the frontend flag is off.
+// Thin derive over usePvpLobbies for callers that only need the on/off gate.
+// PvP is "enabled" for a player iff the frontend opted in, the backend master
+// switch is on, AND they have at least one enterable lobby. Returns `undefined`
+// while loading so callers stay hidden. See usePvpLobbies for the full set.
 export function usePvpEnabled(): boolean | undefined {
-  const [enabled, setEnabled] = useState<boolean | undefined>(
-    FRONTEND_PVP_ENABLED ? undefined : false,
-  );
-
-  useEffect(() => {
-    if (!FRONTEND_PVP_ENABLED) return;
-    let active = true;
-    fetch("/api/config")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((cfg: ContractConfig | null) => {
-        if (active) setEnabled(Boolean(cfg?.pvpEnabled));
-      })
-      .catch(() => {
-        if (active) setEnabled(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  return enabled;
+  return usePvpLobbies().pvpEnabled;
 }

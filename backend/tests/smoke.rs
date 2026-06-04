@@ -10,7 +10,7 @@ use word_circles_backend::db::repository::GameRepository;
 
 fn app(pool: PgPool) -> axum::Router {
     let repo = PostgresRepository::from_pool(pool);
-    build_router(repo, None, None)
+    build_router(repo, None, None, Default::default())
 }
 
 async fn json_body(resp: axum::response::Response) -> serde_json::Value {
@@ -354,12 +354,10 @@ async fn config_with_resolver(pool: PgPool) {
         stats_address: None,
         escrow_address: None,
         pvp_enabled: false,
-        token: None,
-        amount: None,
-        capacity: None,
         timeout_secs: Some(10800),
+        lobbies: vec![],
     };
-    let app = build_router(repo, Some(config), None);
+    let app = build_router(repo, Some(config), None, Default::default());
 
     let resp = app
         .oneshot(Request::get("/api/config").body(Body::empty()).unwrap())
@@ -391,12 +389,10 @@ async fn config_with_pvp_enabled(pool: PgPool) {
         stats_address: None,
         escrow_address: None,
         pvp_enabled: true,
-        token: None,
-        amount: None,
-        capacity: None,
         timeout_secs: Some(10800),
+        lobbies: vec![],
     };
-    let app = build_router(repo, Some(config), None);
+    let app = build_router(repo, Some(config), None, Default::default());
 
     let resp = app
         .oneshot(Request::get("/api/config").body(Body::empty()).unwrap())
@@ -499,7 +495,7 @@ fn pvp_guess(game_id: &str, guess: &str, guess_number: u32, player: &str) -> Req
 async fn pvp_game_status(pool: PgPool) {
     let repo = PostgresRepository::from_pool(pool.clone());
     let game_id = setup_pvp_game(&repo).await;
-    let app = build_router(repo, None, None);
+    let app = build_router(repo, None, None, Default::default());
 
     let resp = app
         .oneshot(
@@ -538,7 +534,7 @@ async fn pvp_game_not_found(pool: PgPool) {
 async fn pvp_guess_requires_player(pool: PgPool) {
     let repo = PostgresRepository::from_pool(pool.clone());
     let game_id = setup_pvp_game(&repo).await;
-    let app = build_router(repo, None, None);
+    let app = build_router(repo, None, None, Default::default());
 
     let payload = serde_json::json!({
         "guess": "crane",
@@ -564,7 +560,7 @@ async fn pvp_guess_requires_player(pool: PgPool) {
 async fn pvp_guess_rejects_non_player(pool: PgPool) {
     let repo = PostgresRepository::from_pool(pool.clone());
     let game_id = setup_pvp_game(&repo).await;
-    let app = build_router(repo, None, None);
+    let app = build_router(repo, None, None, Default::default());
 
     let resp = app
         .oneshot(pvp_guess(
@@ -582,7 +578,7 @@ async fn pvp_guess_rejects_non_player(pool: PgPool) {
 async fn pvp_guess_starts_timer_and_records(pool: PgPool) {
     let repo = PostgresRepository::from_pool(pool.clone());
     let game_id = setup_pvp_game(&repo).await;
-    let app = build_router(repo, None, None);
+    let app = build_router(repo, None, None, Default::default());
 
     let resp = app
         .clone()
@@ -622,7 +618,7 @@ async fn pvp_guess_starts_timer_and_records(pool: PgPool) {
 async fn pvp_guess_marks_finished_on_last_guess(pool: PgPool) {
     let repo = PostgresRepository::from_pool(pool.clone());
     let game_id = setup_pvp_game(&repo).await;
-    let app = build_router(repo, None, None);
+    let app = build_router(repo, None, None, Default::default());
 
     let resp = app
         .clone()

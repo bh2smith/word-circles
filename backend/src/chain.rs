@@ -6,8 +6,31 @@ use alloy::{
     sol,
     sol_types::SolValue,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::fmt;
+
+/// A single PvP lobby: one Circles group's wrapper token and stake. The escrow
+/// is group-agnostic, so each lobby is an independent `(resolver, token, amount,
+/// capacity)` bucket keyed on the wrapper token.
+#[derive(Clone, Serialize, utoipa::ToSchema)]
+pub struct LobbyConfig {
+    /// Human-readable group name, e.g. "Gnosis".
+    pub name: String,
+    /// Group avatar address. Intersected with a player's Circles group
+    /// memberships to decide whether the lobby is shown to them.
+    pub group: String,
+    /// s-gCRC wrapper token a player stakes to join this lobby.
+    pub token: String,
+    /// Per-player stake (wei, as a decimal string) for `escrow.join`.
+    pub amount: String,
+    /// Number of players per PvP game (the escrow lobby capacity).
+    pub capacity: u32,
+    /// Live: the bot Safe holds ≥ 2× `amount` of `token` (headroom so two
+    /// simultaneous joiners are both covered). Stamped per-request from shared
+    /// state the bot refreshes each tick; `false` until the first tick.
+    #[serde(rename = "botFunded")]
+    pub bot_funded: bool,
+}
 
 #[derive(Clone, Serialize, utoipa::ToSchema)]
 pub struct ContractConfig {
@@ -20,19 +43,91 @@ pub struct ContractConfig {
     pub escrow_address: Option<String>,
     #[serde(rename = "pvpEnabled")]
     pub pvp_enabled: bool,
-    /// Circles token a player must stake to join a PvP game.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub token: Option<String>,
-    /// Per-player stake (wei, as a decimal string) for `escrow.join`.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub amount: Option<String>,
-    /// Number of players per PvP game (the escrow lobby capacity).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub capacity: Option<u32>,
     /// Per-player play window before a forced timeout, in seconds.
     #[serde(rename = "timeoutSecs", skip_serializing_if = "Option::is_none")]
     pub timeout_secs: Option<u32>,
+    /// Configured PvP lobbies (one per supported group). The frontend filters
+    /// these by `botFunded` and the player's group memberships before showing PvP.
+    pub lobbies: Vec<LobbyConfig>,
 }
+
+/// Static lobby definition parsed from the `PVP_LOBBIES` env JSON, before the
+/// live `bot_funded` flag is layered on. Held by `ResolverClient` and the bot.
+#[derive(Clone)]
+pub struct Lobby {
+    pub name: String,
+    pub group: Address,
+    pub token: Address,
+    pub amount: U256,
+    pub capacity: u32,
+}
+
+/// JSON shape of one entry in the `PVP_LOBBIES` env var (hand-written into
+/// Dappnode/Vercel settings). `capacity` defaults to 2 if omitted.
+#[derive(Deserialize)]
+struct LobbyEnv {
+    name: String,
+    group: String,
+    token: String,
+    amount: String,
+    #[serde(default = "default_capacity")]
+    capacity: u32,
+}
+
+fn default_capacity() -> u32 {
+    2
+}
+
+impl Lobby {
+    /// Parses `PVP_LOBBIES` (a JSON array). Returns an empty list (logging the
+    /// reason) when unset or malformed — PvP then degrades to "no lobbies".
+    pub fn from_env() -> Vec<Lobby> {
+        let Ok(raw) = std::env::var("PVP_LOBBIES") else {
+            return Vec::new();
+        };
+        Self::parse(&raw)
+    }
+
+    /// Parses the `PVP_LOBBIES` JSON. Malformed JSON logs and yields an empty
+    /// list; individual entries with an unparseable address are skipped (logged).
+    pub fn parse(raw: &str) -> Vec<Lobby> {
+        let parsed: Vec<LobbyEnv> = match serde_json::from_str(raw) {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::error!("PVP_LOBBIES is not valid JSON: {e}");
+                return Vec::new();
+            }
+        };
+        parsed
+            .into_iter()
+            .filter_map(|l| match (l.group.parse(), l.token.parse(), l.amount.parse()) {
+                (Ok(group), Ok(token), Ok(amount)) => Some(Lobby {
+                    name: l.name,
+                    group,
+                    token,
+                    amount,
+                    capacity: l.capacity,
+                }),
+                _ => {
+                    tracing::error!(lobby = %l.name, "PVP_LOBBIES entry has an invalid address/amount — skipped");
+                    None
+                }
+            })
+            .collect()
+    }
+}
+
+/// Lowercase 0x hex of an address, the canonical key for the bot's funded-set
+/// and the `get_config` lookup so the two always agree on casing.
+pub fn token_key(addr: &Address) -> String {
+    format!("{addr:#x}")
+}
+
+/// Shared set of bot-funded lobby tokens (lowercase 0x hex keys, see
+/// [`token_key`]). The bot writes it each tick; `get_config` reads it to stamp
+/// each lobby's live `bot_funded` flag — keeping the on-chain balance read off
+/// the `/api/config` request path.
+pub type FundedSet = std::sync::Arc<std::sync::RwLock<std::collections::HashSet<String>>>;
 
 sol! {
     #[sol(rpc)]
@@ -61,7 +156,36 @@ sol! {
             bytes calldata signature
         ) external;
     }
+
+    // Circles BaseGroup: the owner/service trusts members so they can mint the
+    // group token. We call this as the group's `service` (the resolver EOA, set
+    // via setService by the group owner).
+    #[sol(rpc)]
+    interface IBaseGroup {
+        function trust(address trustReceiver, uint96 expiry) external;
+    }
+
+    // Circles v2 Hub: membership = the group trusts the member (with a live
+    // expiry). Used to skip re-trusting an existing member.
+    #[sol(rpc)]
+    interface IHub {
+        function isTrusted(address truster, address trustReceiver) external view returns (bool);
+    }
+
+    // ERC-1271: Circles avatars are Safes, so a "signed by the player" proof is a
+    // contract signature verified by the avatar itself, not ecrecover.
+    #[sol(rpc)]
+    interface IERC1271 {
+        function isValidSignature(bytes32 hash, bytes signature) external view returns (bytes4);
+    }
 }
+
+/// ERC-1271 magic value returned by `isValidSignature` for a valid signature.
+const ERC1271_MAGIC: [u8; 4] = [0x16, 0x26, 0xba, 0x7e];
+
+/// Circles v2 Hub on Gnosis. Used to check existing group membership before
+/// trusting (idempotency).
+pub const HUB_ADDRESS: &str = "0xc12C1E50ABB450d6205Ea2C3Fa861b3B834d13e8";
 
 #[derive(Debug)]
 pub enum ChainError {
@@ -88,9 +212,10 @@ pub struct ResolverClient {
     pub commitment_address: Address,
     pub escrow_address: Option<Address>,
     pub stats_address: Option<Address>,
-    pub token: Option<Address>,
-    pub amount: Option<U256>,
-    pub capacity: Option<u32>,
+    pub lobbies: Vec<Lobby>,
+    /// Circles BaseGroup the app onboards players into (e.g. WordGames). The
+    /// resolver EOA must be the group's owner/service to trust members.
+    pub group_address: Option<Address>,
 }
 
 impl ResolverClient {
@@ -107,11 +232,8 @@ impl ResolverClient {
         let stats_address = std::env::var("STATS_ADDRESS")
             .ok()
             .and_then(|s| s.parse().ok());
-        let token = std::env::var("PVP_TOKEN").ok().and_then(|s| s.parse().ok());
-        let amount = std::env::var("PVP_AMOUNT")
-            .ok()
-            .and_then(|s| s.parse().ok());
-        let capacity = std::env::var("PVP_CAPACITY")
+        let lobbies = Lobby::from_env();
+        let group_address = std::env::var("GROUP_ADDRESS")
             .ok()
             .and_then(|s| s.parse().ok());
 
@@ -128,9 +250,8 @@ impl ResolverClient {
             commitment_address,
             escrow_address,
             stats_address,
-            token,
-            amount,
-            capacity,
+            lobbies,
+            group_address,
         })
     }
 
@@ -138,18 +259,112 @@ impl ResolverClient {
         self.signer.address()
     }
 
+    /// Builds the base config. Each lobby's `bot_funded` starts `false`;
+    /// `get_config` stamps the live value per-request from the bot's funded-set.
     pub fn config(&self, pvp_enabled: bool, timeout_secs: u32) -> ContractConfig {
+        let lobbies = self
+            .lobbies
+            .iter()
+            .map(|l| LobbyConfig {
+                name: l.name.clone(),
+                group: token_key(&l.group),
+                token: token_key(&l.token),
+                amount: l.amount.to_string(),
+                capacity: l.capacity,
+                bot_funded: false,
+            })
+            .collect();
         ContractConfig {
             resolver: self.signer.address().to_string(),
             commitment_address: self.commitment_address.to_string(),
             stats_address: self.stats_address.map(|a| a.to_string()),
             escrow_address: self.escrow_address.map(|a| a.to_string()),
             pvp_enabled,
-            token: self.token.map(|a| a.to_string()),
-            amount: self.amount.map(|a| a.to_string()),
-            capacity: self.capacity,
             timeout_secs: Some(timeout_secs),
+            lobbies,
         }
+    }
+
+    /// Verifies `signature` over `message` was produced by `player`. Circles
+    /// avatars are Safes, so this tries plain ECDSA recovery first (cheap, for an
+    /// EOA player) and falls back to an on-chain ERC-1271 `isValidSignature`
+    /// check against the player contract (the miniapp/Safe case). The message is
+    /// EIP-191 prefix-hashed (matching the miniapp host's `erc1271` signing).
+    pub async fn verify_player_signature(
+        &self,
+        player: Address,
+        message: &str,
+        signature: &[u8],
+    ) -> Result<bool, ChainError> {
+        // Fast path: EOA ECDSA recovery (applies the EIP-191 prefix internally).
+        if let Ok(sig) = alloy::signers::Signature::try_from(signature) {
+            if let Ok(recovered) = sig.recover_address_from_msg(message.as_bytes()) {
+                if recovered == player {
+                    return Ok(true);
+                }
+            }
+        }
+
+        // Safe / contract wallet: ERC-1271 against the EIP-191 hash.
+        let hash = alloy::primitives::eip191_hash_message(message.as_bytes());
+        let provider = self.build_provider()?;
+        let contract = IERC1271::new(player, &provider);
+        match contract
+            .isValidSignature(hash, Bytes::from(signature.to_vec()))
+            .call()
+            .await
+        {
+            Ok(magic) => Ok(magic.as_slice() == ERC1271_MAGIC),
+            // No code at the address / revert ⇒ not a valid contract signer.
+            Err(_) => Ok(false),
+        }
+    }
+
+    /// Whether the onboarding group already trusts `member` (live membership).
+    pub async fn is_group_member(&self, member: Address) -> Result<bool, ChainError> {
+        let group = self
+            .group_address
+            .ok_or_else(|| ChainError::Config("GROUP_ADDRESS not set".into()))?;
+        let hub: Address = HUB_ADDRESS
+            .parse()
+            .map_err(|e| ChainError::Config(format!("invalid HUB_ADDRESS: {e}")))?;
+        let provider = self.build_provider()?;
+        let contract = IHub::new(hub, &provider);
+        contract
+            .isTrusted(group, member)
+            .call()
+            .await
+            .map_err(|e| ChainError::Transport(format!("isTrusted: {e}")))
+    }
+
+    /// Trusts `member` into the onboarding group (indefinite expiry) so they can
+    /// mint the group token and the PvP lobby becomes visible to them. Idempotent:
+    /// returns `Ok(None)` without a tx if they're already a member. Called as the
+    /// group's service (the resolver EOA), so the group owner must have run
+    /// `setService(resolver)` first.
+    pub async fn trust_group_member(
+        &self,
+        member: Address,
+    ) -> Result<Option<FixedBytes<32>>, ChainError> {
+        if self.is_group_member(member).await? {
+            return Ok(None);
+        }
+        let group = self
+            .group_address
+            .ok_or_else(|| ChainError::Config("GROUP_ADDRESS not set".into()))?;
+        let provider = self.build_provider()?;
+        let contract = IBaseGroup::new(group, &provider);
+        // type(uint96).max — the indefinite expiry the group's other members use.
+        let expiry = alloy::primitives::aliases::U96::MAX;
+        let receipt = contract
+            .trust(member, expiry)
+            .send()
+            .await
+            .map_err(|e| ChainError::Transport(format!("trust send: {e}")))?
+            .get_receipt()
+            .await
+            .map_err(|e| ChainError::Transport(format!("trust receipt: {e}")))?;
+        Ok(Some(receipt.transaction_hash))
     }
 
     pub async fn commit(
@@ -278,9 +493,8 @@ mod tests {
             commitment_address: Address::ZERO,
             escrow_address: None,
             stats_address: None,
-            token: None,
-            amount: None,
-            capacity: None,
+            lobbies: Vec::new(),
+            group_address: None,
         }
     }
 
@@ -349,5 +563,88 @@ mod tests {
     fn address_derived_from_key() {
         let client = test_client();
         assert_ne!(client.address(), Address::ZERO);
+    }
+
+    #[test]
+    fn parses_pvp_lobbies_json() {
+        let raw = r#"[
+            {"name":"Gnosis","group":"0xc19bc204eb1c1d5b3fe500e5e5dfabab625f286c","token":"0xeeF7B1f06B092625228C835Dd5D5B14641D1e54A","amount":"100000000000000000","capacity":2},
+            {"name":"Berlin Full Node","group":"0xeb614ef61367687704cd4628a68a02f3b10ce68c","token":"0x0d8c4901Dd270Fe101B8014A5dbECC4e4432eB1E","amount":"100000000000000000"}
+        ]"#;
+        let lobbies = Lobby::parse(raw);
+        assert_eq!(lobbies.len(), 2);
+        assert_eq!(lobbies[0].name, "Gnosis");
+        assert_eq!(lobbies[0].capacity, 2);
+        // capacity defaults to 2 when omitted.
+        assert_eq!(lobbies[1].capacity, 2);
+        assert_eq!(lobbies[1].amount, U256::from(100_000_000_000_000_000u128));
+        // Addresses are lowercased by token_key for the funded-set / membership keys.
+        assert_eq!(
+            token_key(&lobbies[0].token),
+            "0xeef7b1f06b092625228c835dd5d5b14641d1e54a"
+        );
+    }
+
+    #[test]
+    fn invalid_lobbies_json_yields_empty() {
+        assert!(Lobby::parse("not json").is_empty());
+        // A bad address in one entry drops just that entry.
+        let raw = r#"[{"name":"Bad","group":"0xnothex","token":"0xeeF7B1f06B092625228C835Dd5D5B14641D1e54A","amount":"1"}]"#;
+        assert!(Lobby::parse(raw).is_empty());
+    }
+
+    #[tokio::test]
+    async fn verify_player_signature_accepts_eoa_self_sign() {
+        let client = test_client();
+        let player = client.address();
+        let message = "Join Word Circles PvP group\nAddress: 0xabc";
+        let sig = client
+            .signer
+            .sign_message(message.as_bytes())
+            .await
+            .unwrap();
+        let ok = client
+            .verify_player_signature(player, message, &sig.as_bytes())
+            .await
+            .unwrap();
+        assert!(ok, "an address's own EIP-191 signature must verify");
+    }
+
+    #[tokio::test]
+    async fn verify_player_signature_rejects_other_signer_via_ecdsa() {
+        // A signature by the test key must NOT verify for a different EOA. (The
+        // ERC-1271 fallback returns false when the address has no contract code.)
+        let client = test_client();
+        let other = address!("0x000000000000000000000000000000000000beef");
+        let message = "Join Word Circles PvP group\nAddress: 0xbeef";
+        let sig = client
+            .signer
+            .sign_message(message.as_bytes())
+            .await
+            .unwrap();
+        let ok = client
+            .verify_player_signature(other, message, &sig.as_bytes())
+            .await
+            .unwrap();
+        assert!(!ok, "a mismatched signer must not verify");
+    }
+
+    #[test]
+    fn config_stamps_lobbies_unfunded_by_default() {
+        let mut client = test_client();
+        client.lobbies = Lobby::parse(
+            r#"[{"name":"Gnosis","group":"0xc19bc204eb1c1d5b3fe500e5e5dfabab625f286c","token":"0xeeF7B1f06B092625228C835Dd5D5B14641D1e54A","amount":"100000000000000000","capacity":2}]"#,
+        );
+        let config = client.config(true, 10_800);
+        assert_eq!(config.lobbies.len(), 1);
+        assert_eq!(config.lobbies[0].name, "Gnosis");
+        // bot_funded is stamped live by get_config; the base is always false.
+        assert!(!config.lobbies[0].bot_funded);
+        // group/token serialized as lowercase 0x hex (matches the funded-set key
+        // and the frontend membership intersection).
+        assert_eq!(
+            config.lobbies[0].token,
+            "0xeef7b1f06b092625228c835dd5d5b14641d1e54a"
+        );
     }
 }
