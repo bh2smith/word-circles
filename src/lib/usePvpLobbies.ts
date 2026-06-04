@@ -16,6 +16,12 @@ import type { ContractConfig, LobbyConfig } from "@/lib/api";
 export const FRONTEND_PVP_ENABLED =
   process.env.NEXT_PUBLIC_PVP_ENABLED === "true";
 
+if (typeof window !== "undefined") {
+  console.log(
+    `[PvP] NEXT_PUBLIC_PVP_ENABLED=${process.env.NEXT_PUBLIC_PVP_ENABLED} → FRONTEND_PVP_ENABLED=${FRONTEND_PVP_ENABLED}`,
+  );
+}
+
 export interface PvpLobbies {
   /** Full backend config (escrow/resolver/timeout). null while loading or off. */
   config: ContractConfig | null;
@@ -120,6 +126,17 @@ export function usePvpLobbies(): PvpLobbies {
     pvpEnabled = undefined; // waiting on wallet / memberships
   } else {
     pvpEnabled = visible.length > 0;
+  }
+
+  if (typeof window !== "undefined") {
+    console.log("[PvP] pvpEnabled determined:", pvpEnabled, {
+      FRONTEND_PVP_ENABLED,
+      configLoaded,
+      backendPvpEnabled: config?.pvpEnabled ?? null,
+      address: address ?? null,
+      memberships,
+      visibleCount: visible.length,
+    });
   }
 
   const defaultGroup = config?.lobbies[0]?.group.toLowerCase() ?? null;
