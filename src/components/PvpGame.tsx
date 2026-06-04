@@ -21,6 +21,7 @@ import {
   CIRCLES_MINIAPP_URL,
 } from "@/lib/circles";
 import { encodeApprove, encodeJoin } from "@/lib/contract";
+import { FRONTEND_PVP_ENABLED } from "@/lib/usePvpEnabled";
 import type {
   ContractConfig,
   PvpGameResponse,
@@ -446,7 +447,11 @@ export default function PvpGame() {
   }
 
   const pvpAvailable =
-    config?.pvpEnabled && config.escrowAddress && config.token && config.amount;
+    FRONTEND_PVP_ENABLED &&
+    config?.pvpEnabled &&
+    config.escrowAddress &&
+    config.token &&
+    config.amount;
 
   if (!pvpAvailable) {
     return (
