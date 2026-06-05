@@ -1,3 +1,4 @@
+-- Dune: https://dune.com/queries/7608038
 -- Word Circles - Global Leaderboard with Streaks
 -- All-time per-player stats: games, wins, losses, win rate, current streak,
 -- max streak, average guesses on wins, average minutes-from-UTC-midnight of

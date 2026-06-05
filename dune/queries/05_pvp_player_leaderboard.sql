@@ -1,3 +1,4 @@
+-- Dune: https://dune.com/queries/7647942
 -- Word Circles PvP - Player Leaderboard (stakes, winnings, net P&L)
 -- All-time per-player PvP economics, derived purely from on-chain escrow events.
 --   • Every participant emits a Joined event, so joins = games entered.

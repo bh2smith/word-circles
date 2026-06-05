@@ -1,3 +1,4 @@
+-- Dune: https://dune.com/queries/7608035
 -- Word Circles - Daily Leaderboard (current puzzle)
 -- Ranks every submission for the latest gameId.
 -- Order:

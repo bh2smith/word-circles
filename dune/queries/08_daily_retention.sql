@@ -1,3 +1,4 @@
+-- Dune: https://dune.com/queries/7662928
 -- Word Circles — Daily Retention
 -- Engagement per daily puzzle (gameId is the puzzle number, one per day):
 --   active_players          distinct players who submitted that puzzle

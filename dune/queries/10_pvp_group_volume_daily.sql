@@ -1,3 +1,4 @@
+-- Dune: https://dune.com/queries/7662942
 -- Word Circles PvP — Group Volume Over Time
 -- Daily PvP stake & payout volume (CRC) split by the group token staked, to
 -- show multi-group adoption since players could pick different group tokens.

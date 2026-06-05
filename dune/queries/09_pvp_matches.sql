@@ -1,3 +1,4 @@
+-- Dune: https://dune.com/queries/7662938
 -- Word Circles PvP — Matches (players & winner)
 -- A match feed: one row per escrow game with its participants and winner(s),
 -- the group token staked, and pot/payout in CRC.

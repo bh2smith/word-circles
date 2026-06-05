@@ -1,3 +1,4 @@
+-- Dune: https://dune.com/queries/7647948
 -- Word Circles PvP - Daily Activity & Volume
 -- One row per UTC day with the PvP funnel and CRC flow:
 --   games_created   lobbies opened

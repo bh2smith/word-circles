@@ -1,3 +1,4 @@
+-- Dune: https://dune.com/queries/7647933
 -- Word Circles PvP - Game Lifecycle (one row per on-chain game)
 -- Stitches the full lifecycle of every staked PvP game from the two on-chain
 -- contracts: WordCirclesEscrow (stake/lobby/payout) and WordCommitment (the

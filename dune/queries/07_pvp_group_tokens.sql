@@ -1,3 +1,4 @@
+-- Dune: https://dune.com/queries/7662925
 -- Word Circles PvP — Volume & Games per Group Token
 -- Players can stake different Circles group tokens in PvP. This breaks the
 -- on-chain escrow activity down by that stake token.
