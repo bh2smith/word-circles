@@ -1,8 +1,10 @@
 import {
   createPublicClient,
+  encodeAbiParameters,
   encodeFunctionData,
   getAddress,
   http,
+  keccak256,
   parseAbi,
 } from "viem";
 import { gnosis } from "viem/chains";
@@ -67,7 +69,59 @@ export const wrapperAbi = parseAbi([
 
 export const escrowAbi = parseAbi([
   "function join(address resolver, address token, uint256 amount, uint128 capacity) returns (bytes32)",
+  "function getPlayerCount(address resolver, address token, uint256 amount, uint128 capacity) view returns (uint128)",
+  "function isPlayerInGame(bytes32 gameId, address player) view returns (bool)",
 ]);
+
+// True if `player` is already seated in the lobby's current open game, which
+// means a fresh join() would revert with PlayerAlreadyJoined. This mirrors the
+// escrow's on-chain gameId derivation exactly:
+//
+//   lobbyKey = keccak256(resolver, token, amount, capacity)
+//   gameId   = keccak256(lobbyKey, playerCount / capacity)
+//
+// Reading the chain (rather than tracking "just played" in component state)
+// makes the Play-Again guard survive a page refresh. Once the game fills, the
+// counter rolls over to a new bucket and this returns false again.
+export async function isPlayerInOpenGame(
+  escrow: string,
+  resolver: string,
+  token: string,
+  amount: bigint,
+  capacity: number,
+  player: string,
+): Promise<boolean> {
+  const cap = BigInt(capacity);
+  const count = (await publicClient.readContract({
+    address: escrow as `0x${string}`,
+    abi: escrowAbi,
+    functionName: "getPlayerCount",
+    args: [resolver as `0x${string}`, token as `0x${string}`, amount, cap],
+  })) as bigint;
+  const lobbyKey = keccak256(
+    encodeAbiParameters(
+      [
+        { type: "address" },
+        { type: "address" },
+        { type: "uint256" },
+        { type: "uint128" },
+      ],
+      [resolver as `0x${string}`, token as `0x${string}`, amount, cap],
+    ),
+  );
+  const gameId = keccak256(
+    encodeAbiParameters(
+      [{ type: "bytes32" }, { type: "uint256" }],
+      [lobbyKey, count / cap],
+    ),
+  );
+  return (await publicClient.readContract({
+    address: escrow as `0x${string}`,
+    abi: escrowAbi,
+    functionName: "isPlayerInGame",
+    args: [gameId, player as `0x${string}`],
+  })) as boolean;
+}
 
 export function encodeApprove(spender: string, amount: bigint): string {
   return encodeFunctionData({
