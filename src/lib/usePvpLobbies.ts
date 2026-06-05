@@ -8,6 +8,7 @@ import {
   subscribeWallet,
 } from "@/lib/circles";
 import type { ContractConfig, LobbyConfig } from "@/lib/api";
+import { api } from "@/lib/api/client";
 
 // Frontend build-time PvP opt-in. PvP UI only ever shows when BOTH this flag is
 // set at build (NEXT_PUBLIC_PVP_ENABLED=true) AND the backend reports pvpEnabled
@@ -63,10 +64,10 @@ export function usePvpLobbies(): PvpLobbies {
     initCircles();
     const unsubscribe = subscribeWallet(setAddress);
     let active = true;
-    fetch("/api/config")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((cfg: ContractConfig | null) => {
-        if (active) setConfig(cfg);
+    api
+      .GET("/api/config")
+      .then(({ data }) => {
+        if (active) setConfig(data ?? null);
       })
       .catch(() => {
         if (active) setConfig(null);

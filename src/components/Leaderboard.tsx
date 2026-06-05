@@ -7,6 +7,7 @@ import {
   fetchCirclesProfiles,
 } from "@/lib/circles";
 import type { LeaderboardEntry, DailyResult } from "@/lib/api";
+import { api } from "@/lib/api/client";
 
 function truncateAddress(addr: string): string {
   if (addr.length <= 10) return addr;
@@ -42,9 +43,10 @@ export function LeaderboardPanel({ gameId }: { gameId: number | null }) {
 
   const fetchOverall = useCallback(() => {
     setLoading(true);
-    fetch("/api/leaderboard?limit=50")
-      .then((r) => r.json())
-      .then((entries: LeaderboardEntry[]) => {
+    api
+      .GET("/api/leaderboard", { params: { query: { limit: 50 } } })
+      .then(({ data }) => {
+        const entries = data ?? [];
         setOverall(entries);
         loadProfiles(entries.map((e) => e.address));
       })
@@ -55,9 +57,10 @@ export function LeaderboardPanel({ gameId }: { gameId: number | null }) {
   const fetchDaily = useCallback(() => {
     if (gameId === null) return;
     setLoading(true);
-    fetch(`/api/leaderboard/daily?gameId=${gameId}`)
-      .then((r) => r.json())
-      .then((results: DailyResult[]) => {
+    api
+      .GET("/api/leaderboard/daily", { params: { query: { gameId } } })
+      .then(({ data }) => {
+        const results = data ?? [];
         setDaily(results);
         loadProfiles(results.map((r) => r.address));
       })

@@ -11,7 +11,7 @@ import Leaderboard, { LeaderboardPanel } from "./Leaderboard";
 import GroupJoinPrompt from "./GroupJoinPrompt";
 import type { GuessResult, LetterResult } from "@/lib/game";
 import { MAX_GUESSES, WORD_LENGTH } from "@/lib/game";
-import type { GuessResponse, ErrorResponse } from "@/lib/api";
+import { api } from "@/lib/api/client";
 import {
   isMiniappMode,
   initCircles,
@@ -98,58 +98,56 @@ export default function Game() {
   // on the server's UNIQUE(game_id, player_id, guess_number) constraint.
   useEffect(() => {
     let cancelled = false;
-    const url = walletAddress
-      ? `/api/game?player=${encodeURIComponent(walletAddress)}`
-      : "/api/game";
 
-    fetch(url)
-      .then((r) => r.json())
-      .then(
-        (data: {
-          gameId: number;
-          guesses?: GuessResult[];
-          status?: "playing" | "won" | "lost";
-          answer?: string;
-        }) => {
-          if (cancelled) return;
-          setGameId(data.gameId);
+    api
+      .GET("/api/game", {
+        params: walletAddress
+          ? { query: { player: walletAddress } }
+          : undefined,
+      })
+      .then(({ data }) => {
+        if (cancelled || !data) return;
+        setGameId(data.gameId);
 
-          if (walletAddress && data.guesses !== undefined) {
-            const serverStatus = data.status ?? "playing";
-            setGuesses(data.guesses);
-            setStatus(serverStatus);
-            setAnswer(data.answer);
-            if (data.guesses.length > 0) {
-              saveGame({
-                gameId: data.gameId,
-                guesses: data.guesses,
-                status: serverStatus,
-                answer: data.answer,
-              });
-            }
-            if (serverStatus !== "playing") {
-              setTimeout(() => setShowStats(true), 500);
-            }
-            return;
+        if (walletAddress && data.guesses != null) {
+          const serverGuesses = data.guesses as GuessResult[];
+          const serverStatus = (data.status ?? "playing") as
+            | "playing"
+            | "won"
+            | "lost";
+          setGuesses(serverGuesses);
+          setStatus(serverStatus);
+          setAnswer(data.answer ?? undefined);
+          if (serverGuesses.length > 0) {
+            saveGame({
+              gameId: data.gameId,
+              guesses: serverGuesses,
+              status: serverStatus,
+              answer: data.answer ?? undefined,
+            });
           }
-
-          // No wallet yet — fall back to local cache for visual continuity
-          // (submitting a guess requires a wallet anyway).
-          const saved = loadGame();
-          if (saved && saved.gameId === data.gameId) {
-            setGuesses(saved.guesses);
-            setStatus(saved.status);
-            setAnswer(saved.answer);
-            if (saved.status !== "playing") {
-              setTimeout(() => setShowStats(true), 500);
-            }
-          } else {
-            setGuesses([]);
-            setStatus("playing");
-            setAnswer(undefined);
+          if (serverStatus !== "playing") {
+            setTimeout(() => setShowStats(true), 500);
           }
-        },
-      );
+          return;
+        }
+
+        // No wallet yet — fall back to local cache for visual continuity
+        // (submitting a guess requires a wallet anyway).
+        const saved = loadGame();
+        if (saved && saved.gameId === data.gameId) {
+          setGuesses(saved.guesses);
+          setStatus(saved.status);
+          setAnswer(saved.answer);
+          if (saved.status !== "playing") {
+            setTimeout(() => setShowStats(true), 500);
+          }
+        } else {
+          setGuesses([]);
+          setStatus("playing");
+          setAnswer(undefined);
+        }
+      });
 
     return () => {
       cancelled = true;
@@ -215,21 +213,17 @@ export default function Game() {
 
     setSubmitting(true);
     try {
-      const res = await fetch("/api/guess", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const { data, error } = await api.POST("/api/guess", {
+        body: {
           guess: currentGuess,
           gameId: String(gameId),
           guessNumber: guesses.length,
           player: getConnectedAddress() ?? undefined,
-        }),
+        },
       });
 
-      const data: GuessResponse & Partial<ErrorResponse> = await res.json();
-
-      if (!res.ok) {
-        setToast(data.error || "Invalid guess");
+      if (error || !data) {
+        setToast(error?.error || "Invalid guess");
         setShake(true);
         setTimeout(() => setShake(false), 600);
         return;

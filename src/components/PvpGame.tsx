@@ -24,13 +24,8 @@ import {
 } from "@/lib/circles";
 import { encodeApprove, encodeJoin, isPlayerInOpenGame } from "@/lib/contract";
 import { FRONTEND_PVP_ENABLED } from "@/lib/usePvpEnabled";
-import type {
-  LobbyConfig,
-  PvpGameResponse,
-  PvpTranscript,
-  GuessResponse,
-  ErrorResponse,
-} from "@/lib/api";
+import type { LobbyConfig, PvpGameResponse, PvpTranscript } from "@/lib/api";
+import { api } from "@/lib/api/client";
 
 // Remembers the last lobby the player joined so we pre-select it next time
 // (a lightweight "most recently played" — stake is uniform across lobbies).
@@ -210,11 +205,10 @@ export default function PvpGame() {
 
   const fetchActiveGames = useCallback(
     async (address: string): Promise<PvpGameResponse[]> => {
-      const res = await fetch(
-        `/api/games?player=${encodeURIComponent(address)}&active=true`,
-      );
-      if (!res.ok) return [];
-      return res.json();
+      const { data } = await api.GET("/api/games", {
+        params: { query: { player: address, active: true } },
+      });
+      return data ?? [];
     },
     [],
   );
@@ -361,10 +355,10 @@ export default function PvpGame() {
     let active = true;
 
     const tick = async () => {
-      const res = await fetch(`/api/games/${gameId}`);
-      if (!active || !res.ok) return;
-      const g: PvpGameResponse = await res.json();
-      if (!active) return;
+      const { data: g } = await api.GET("/api/games/{game_id}", {
+        params: { path: { game_id: gameId } },
+      });
+      if (!active || !g) return;
       setGame(g);
       // "All players done" is the trigger for the head-to-head view — we don't
       // wait for chain settlement. A re-entered game also picks this branch
@@ -404,9 +398,11 @@ export default function PvpGame() {
   useEffect(() => {
     if (!gameId || !allPlayersDone || transcript) return;
     let active = true;
-    fetch(`/api/games/${gameId}/transcript`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((t: PvpTranscript | null) => {
+    api
+      .GET("/api/games/{game_id}/transcript", {
+        params: { path: { game_id: gameId } },
+      })
+      .then(({ data: t }) => {
         if (active && t) setTranscript(t);
       })
       .catch(() => {});
@@ -426,10 +422,8 @@ export default function PvpGame() {
     }
     setSubmitting(true);
     try {
-      const res = await fetch("/api/guess", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const { data, error } = await api.POST("/api/guess", {
+        body: {
           guess: currentGuess,
           gameId,
           guessNumber: guesses.length,
@@ -438,11 +432,10 @@ export default function PvpGame() {
           // address is rejected as "Not a player in this game". Lowercasing also
           // passes the case-insensitive match once the backend fix ships.
           player: walletAddress?.toLowerCase() ?? undefined,
-        }),
+        },
       });
-      const data: GuessResponse & Partial<ErrorResponse> = await res.json();
-      if (!res.ok) {
-        setToast(data.error || "Invalid guess");
+      if (error || !data) {
+        setToast(error?.error || "Invalid guess");
         shakeOnce();
         return;
       }

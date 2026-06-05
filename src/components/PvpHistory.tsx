@@ -7,7 +7,8 @@ import {
   subscribeWallet,
   getConnectedAddress,
 } from "@/lib/circles";
-import type { PvpGameResponse, PvpTranscript } from "@/lib/api";
+import type { PvpGameResponse } from "@/lib/api";
+import { api } from "@/lib/api/client";
 import {
   outcomeFor,
   isSettled,
@@ -100,12 +101,10 @@ export default function PvpHistory() {
   }, []);
 
   const load = useCallback(async (address: string) => {
-    const res = await fetch(`/api/games?player=${encodeURIComponent(address)}`);
-    if (!res.ok) {
-      setGames([]);
-      return;
-    }
-    setGames(await res.json());
+    const { data } = await api.GET("/api/games", {
+      params: { query: { player: address } },
+    });
+    setGames(data ?? []);
   }, []);
 
   useEffect(() => {
@@ -121,9 +120,10 @@ export default function PvpHistory() {
     Promise.all(
       settled.map(async (g) => {
         try {
-          const res = await fetch(`/api/games/${g.gameId}/transcript`);
-          if (!res.ok) return null;
-          const t: PvpTranscript = await res.json();
+          const { data: t } = await api.GET("/api/games/{game_id}/transcript", {
+            params: { path: { game_id: g.gameId } },
+          });
+          if (!t) return null;
           const outcome = transcriptOutcomeFor(t, walletAddress);
           return outcome ? ([g.gameId, outcome] as const) : null;
         } catch {

@@ -18,6 +18,7 @@ import {
   HUB_ADDRESS,
   staticToDemurrage,
 } from "./contract";
+import { api } from "./api/client";
 
 export { isMiniappMode };
 
@@ -173,14 +174,10 @@ export async function joinGroup(player: string): Promise<boolean> {
     // Default signatureType 'erc1271' → host EIP-191-hashes the message, which
     // the backend verifies via the avatar's isValidSignature.
     const { signature } = await signMessage(groupJoinMessage(player));
-    const res = await fetch("/api/group/join", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ player, signature }),
+    const { data } = await api.POST("/api/group/join", {
+      body: { player, signature },
     });
-    if (!res.ok) return false;
-    const body: { joined?: boolean } = await res.json();
-    return Boolean(body.joined);
+    return Boolean(data?.joined);
   } catch {
     // User rejected the signature, or the request failed.
     return false;
