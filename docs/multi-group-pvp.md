@@ -73,12 +73,12 @@ A JSON array, hand-written into the Dappnode/Vercel env. One entry per group:
 ]
 ```
 
-| Field      | Meaning                                                                          |
-| ---------- | -------------------------------------------------------------------------------- |
-| `name`     | Display name (also the picker label fallback).                                   |
-| `group`    | Circles group avatar. Intersected with the player's memberships.                 |
-| `token`    | The group's s-gCRC wrapper. Validated at startup vs `erc20Circles(1, group)`.    |
-| `amount`   | Per-player stake, **wei** as a decimal string. `0.1 CRC` = `100000000000000000`. |
+| Field      | Meaning                                                                                                                                                                      |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`     | Display name (also the picker label fallback).                                                                                                                               |
+| `group`    | Circles group avatar. Intersected with the player's memberships.                                                                                                             |
+| `token`    | The group's s-gCRC wrapper. Validated at startup vs `erc20Circles(1, group)`.                                                                                                |
+| `amount`   | Per-player stake, **wei** as a decimal string. `0.1 CRC` = `100000000000000000`.                                                                                             |
 | `capacity` | Players per game (optional, default `2`). **Must be `2`** — settlement and the UI only support two players, so entries with any other value are skipped at startup (logged). |
 
 Notes:
