@@ -20,6 +20,8 @@ export function useCirclesProfile(
   const [profile, setProfile] = useState<CirclesProfile | null>(null);
   useEffect(() => {
     if (!address) {
+      // Clear any stale profile when the address is removed.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setProfile(null);
       return;
     }

@@ -133,6 +133,11 @@ export default function PvpGame() {
         : null;
     const saved = loadSaved();
 
+    // Mount-time rehydration from the ?game= param and saved state. These
+    // setters run once on mount to restore an in-progress game — not a
+    // cascading-render loop. Block-disabled since the restore spans several
+    // state setters across both branches.
+    /* eslint-disable react-hooks/set-state-in-effect */
     if (requested) {
       setGameId(requested);
       if (saved && saved.gameId === requested) {
@@ -152,6 +157,7 @@ export default function PvpGame() {
           : "waiting",
       );
     }
+    /* eslint-enable react-hooks/set-state-in-effect */
 
     return unsubscribe;
   }, []);

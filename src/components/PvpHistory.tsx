@@ -108,6 +108,9 @@ export default function PvpHistory() {
   }, []);
 
   useEffect(() => {
+    // load() only setstates after an await, so this is not a synchronous
+    // cascading render; the rule flags the indirect setter call.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (walletAddress) load(walletAddress);
   }, [walletAddress, load]);
 

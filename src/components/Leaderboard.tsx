@@ -69,6 +69,9 @@ export function LeaderboardPanel({ gameId }: { gameId: number | null }) {
   }, [gameId, loadProfiles]);
 
   useEffect(() => {
+    // fetchOverall/fetchDaily set a loading flag synchronously before their
+    // async fetch; refetching on tab change is the intended behavior.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (tab === "overall") fetchOverall();
     else fetchDaily();
   }, [tab, fetchOverall, fetchDaily]);

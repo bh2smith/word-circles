@@ -89,6 +89,9 @@ export default function Game() {
   useEffect(() => {
     initCircles();
     const unsubscribe = subscribeWallet(setWalletAddress);
+    // One-time mount read from localStorage; an effect (not a lazy initializer)
+    // keeps the first render SSR-stable and avoids a hydration mismatch.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setStats(loadStats());
     return unsubscribe;
   }, []);
@@ -159,6 +162,9 @@ export default function Game() {
   // Check contract for duplicate play when wallet and gameId are available
   useEffect(() => {
     if (!walletAddress || gameId === null) return;
+    // Reset to the loading state before the async on-chain recheck fires when
+    // the wallet or game changes.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setAlreadyPlayed(null);
     hasPlayerPlayed(walletAddress, gameId)
       .then(setAlreadyPlayed)
