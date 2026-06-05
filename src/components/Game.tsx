@@ -468,22 +468,13 @@ export default function Game() {
         disabled={status !== "playing" || submitting}
       />
 
-      {/* Hint + Submit below keyboard */}
-      <div className="flex items-start justify-between w-full max-w-lg gap-2">
+      {/* Hint below keyboard */}
+      <div className="w-full max-w-lg">
         <HintPanel
           guesses={guesses}
           onSelectWord={setCurrentGuess}
           revealWords={false}
         />
-        {status === "playing" && (
-          <button
-            onClick={submitGuess}
-            disabled={currentGuess.length !== WORD_LENGTH || submitting}
-            className="shrink-0 px-4 py-2 text-sm font-semibold rounded bg-green-600 text-white disabled:opacity-30 disabled:cursor-not-allowed hover:bg-green-500 transition-colors"
-          >
-            Submit
-          </button>
-        )}
       </div>
 
       {/* Post-win: offer group onboarding to unlock PvP (renders nothing if

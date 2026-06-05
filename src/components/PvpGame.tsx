@@ -689,17 +689,8 @@ export default function PvpGame() {
             onKey={onKey}
             disabled={submitting || graceActive}
           />
-          <div className="flex items-start justify-between w-full max-w-lg gap-2">
+          <div className="w-full max-w-lg">
             <HintPanel guesses={guesses} onSelectWord={setCurrentGuess} />
-            <button
-              onClick={submitGuess}
-              disabled={
-                currentGuess.length !== WORD_LENGTH || submitting || graceActive
-              }
-              className="shrink-0 px-4 py-2 text-sm font-semibold rounded bg-green-600 text-white disabled:opacity-30 disabled:cursor-not-allowed hover:bg-green-500 transition-colors"
-            >
-              Submit
-            </button>
           </div>
         </>
       )}
