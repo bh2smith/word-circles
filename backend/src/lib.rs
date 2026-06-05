@@ -731,16 +731,24 @@ async fn get_pvp_transcript<R: GameRepository>(
         }
     };
 
-    // Transcripts only after settlement — never leak a live opponent's guesses.
-    if game.status != "settled" && game.status != "completed" {
-        return err_response(StatusCode::CONFLICT, "Results available after settlement");
-    }
-
     let players = state
         .repo
         .get_game_players(&game_id)
         .await
         .unwrap_or_default();
+
+    // Transcripts are visible once every player has finished their board — the
+    // invariant we actually need is "don't leak a live opponent's guesses,"
+    // not "don't leak before chain settlement." Surfacing the head-to-head as
+    // soon as the last guess lands lets the client show the outcome without
+    // waiting for the Resolved event to be mined.
+    let all_done = !players.is_empty() && players.iter().all(|p| p.finished_at.is_some());
+    if !all_done {
+        return err_response(
+            StatusCode::CONFLICT,
+            "Results available once both players finish",
+        );
+    }
 
     let mut transcript_players = Vec::with_capacity(players.len());
     for p in &players {

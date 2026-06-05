@@ -311,11 +311,15 @@ export default function PvpGame() {
       const g: PvpGameResponse = await res.json();
       if (!active) return;
       setGame(g);
-      const isSettled = g.status === "settled" || g.status === "completed";
-      // A re-entered or already-finished game that's settled jumps straight to
-      // the results view; otherwise the word committing (status -> "open" on
-      // first join, or "active" once full) promotes us to playing.
-      if (isSettled) {
+      // "All players done" is the trigger for the head-to-head view — we don't
+      // wait for chain settlement. A re-entered game also picks this branch
+      // since a settled game implies everyone is finished.
+      const allDone =
+        g.players.length > 0 &&
+        g.players.every(
+          (p) => p.status === "finished" || p.status === "timed_out",
+        );
+      if (allDone) {
         if (phase !== "finished") setPhase("finished");
       } else if (phase === "waiting" && isPlayable(g.status)) {
         armGrace(g.status);
@@ -331,11 +335,19 @@ export default function PvpGame() {
     };
   }, [gameId, phase, armGrace]);
 
-  // Once the game has settled, fetch both players' transcripts for the
-  // head-to-head results screen.
+  // Fetch the head-to-head transcript as soon as every player is done — we
+  // don't wait for the on-chain Resolved event, because the backend already
+  // has the full outcome at that point and the only invariant we need is
+  // "no live opponent leaks." The backend enforces the same gate. While the
+  // chain catches up, settlement happens silently in the background.
+  const allPlayersDone =
+    !!game &&
+    game.players.length > 0 &&
+    game.players.every(
+      (p) => p.status === "finished" || p.status === "timed_out",
+    );
   useEffect(() => {
-    const settled = game?.status === "settled" || game?.status === "completed";
-    if (!gameId || !settled || transcript) return;
+    if (!gameId || !allPlayersDone || transcript) return;
     let active = true;
     fetch(`/api/games/${gameId}/transcript`)
       .then((r) => (r.ok ? r.json() : null))
@@ -346,7 +358,7 @@ export default function PvpGame() {
     return () => {
       active = false;
     };
-  }, [gameId, game?.status, transcript]);
+  }, [gameId, allPlayersDone, transcript]);
 
   const submitGuess = useCallback(async () => {
     if (
@@ -618,8 +630,11 @@ export default function PvpGame() {
 
   const settled = game?.status === "settled" || game?.status === "completed";
 
-  // Settled — show the head-to-head results once the transcript loads.
-  if (phase === "finished" && settled && transcript) {
+  // Show the head-to-head results as soon as the transcript loads — the
+  // backend serves it the moment both players are done, so we don't make
+  // the player wait for chain settlement. Settlement continues silently in
+  // the background and pays out the escrow.
+  if (phase === "finished" && transcript) {
     return (
       <PvpResults
         transcript={transcript}
