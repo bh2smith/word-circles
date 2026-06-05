@@ -10,14 +10,17 @@
 -- realized outcomes. A "win" here means the player received any payout; on a
 -- draw the pot is split, so both players count as paid (see `win_rate_pct`).
 --
--- Player names come from the same uploaded CSV
--- (dune.bh2smith.dataset_word_circles_player_names) used by the daily-Wordle
--- boards: address (varbinary) -> Circles profile name. Refresh by re-running
--- ../scripts/build_circles_names.py and re-uploading the CSV.
+-- Player names use the same hybrid resolution as the daily-Wordle boards
+-- (see 01_daily_leaderboard.sql): the uploaded CSV
+-- (dune.bh2smith.dataset_word_circles_player_names, address varbinary -> name)
+-- covers the bulk, then a live http_post to rpc.aboutcircles.com names ONLY the
+-- players the CSV missed. Scoping the live calls to that unresolved few stays
+-- under Dune's per-execution HTTP request cap. Refresh the bulk names by
+-- re-running ../scripts/build_circles_names.py and re-uploading the CSV.
 --
--- NOTE: the escrow decoded tables are not on Dune yet — see the header of
--- 04_pvp_game_lifecycle.sql for the contracts to submit for decoding. Circles
--- tokens are 18-decimal; wei amounts are scaled to whole CRC.
+-- The escrow decoded tables live under word_circles_gnosis (see the header of
+-- 04_pvp_game_lifecycle.sql for the contract addresses). Circles tokens are
+-- 18-decimal; wei amounts are scaled to whole CRC.
 
 WITH game_stake AS (
   SELECT gameId, CAST(amount AS double) AS stake_wei, capacity
@@ -60,10 +63,33 @@ player_profiles AS (
   -- Uploaded CSV table: columns (player varbinary address, name varchar)
   SELECT player AS player_addr, name AS circles_name
   FROM dune.bh2smith.dataset_word_circles_player_names
+),
+-- Players the CSV did not name; resolved live below.
+unresolved_players AS (
+  SELECT DISTINCT ea.player AS player_addr
+  FROM entry_aggs ea
+  LEFT JOIN player_profiles pp ON pp.player_addr = ea.player
+  WHERE NULLIF(pp.circles_name, '') IS NULL
+),
+-- Live fallback: one http_post per unresolved player (kept small so we stay
+-- under Dune's per-execution HTTP request cap).
+live_profiles AS (
+  SELECT
+    player_addr,
+    json_value(
+      http_post(
+        'https://rpc.aboutcircles.com/',
+        '{"jsonrpc":"2.0","id":1,"method":"circles_getProfileByAddress","params":["0x' || to_hex(player_addr) || '"]}',
+        ARRAY['Content-Type: application/json']
+      ),
+      'lax $.result.name'
+    ) AS circles_name
+  FROM unresolved_players
 )
 SELECT
   COALESCE(
     NULLIF(pp.circles_name, ''),
+    NULLIF(lp.circles_name, ''),
     '0x' || substr(to_hex(ea.player), 1, 4) || '…' || substr(to_hex(ea.player), -4)
   )                                                                       AS player_name,
   ea.player,
@@ -88,6 +114,7 @@ SELECT
 FROM entry_aggs ea
 LEFT JOIN payouts         po ON po.player      = ea.player
 LEFT JOIN player_profiles pp ON pp.player_addr = ea.player
+LEFT JOIN live_profiles   lp ON lp.player_addr = ea.player
 ORDER BY
   net_crc DESC,
   win_rate_pct DESC NULLS LAST,

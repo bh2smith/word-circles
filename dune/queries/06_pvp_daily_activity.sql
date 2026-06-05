@@ -11,9 +11,9 @@
 -- Each event type is bucketed by day independently, then FULL OUTER JOINed on
 -- the day so a day with only joins (no new lobby, no settlement) still shows up.
 --
--- NOTE: the escrow decoded tables are not on Dune yet — see the header of
--- 04_pvp_game_lifecycle.sql for the contracts to submit for decoding. Circles
--- tokens are 18-decimal; wei amounts are scaled to whole CRC.
+-- The escrow decoded tables live under word_circles_gnosis (see the header of
+-- 04_pvp_game_lifecycle.sql for the contract addresses). Circles tokens are
+-- 18-decimal; wei amounts are scaled to whole CRC.
 
 WITH d_created AS (
   SELECT

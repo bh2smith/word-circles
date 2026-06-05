@@ -14,10 +14,9 @@
 -- │  Revealed (gameId, wordIndex, salt)                                 │  word disclosed at settle
 -- └─────────────────────────────────────────────────────────────────────┘
 --
--- NOTE: these decoded tables do not exist on Dune yet — the escrow + commitment
--- contracts still need to be submitted for decoding under the `word_circles`
--- namespace (same as the existing `wordcirclestats_*` tables). Until then this
--- query won't run. Submit for decoding (Gnosis / chain 100):
+-- The escrow + commitment contracts are decoded on Dune under the
+-- `word_circles_gnosis` namespace (Gnosis / chain 100), same as the existing
+-- `wordcirclestats_*` tables:
 --   WordCirclesEscrow  0x20a44c2c546febb4dce773868b532d14663467a0
 --   WordCommitment     0x6e99c40bd8b87290eb977336c4be8b2106bab08f
 -- Decoded table names follow Dune's `<namespace>_<chain>.<contract>_evt_<Event>`
@@ -28,6 +27,13 @@
 -- settlement skeleton is observable on Gnosis.
 --
 -- Circles stake tokens are 18-decimal, so wei amounts are scaled to whole CRC.
+--
+-- The creator's name uses the same hybrid resolution as the daily-Wordle boards
+-- (see 01_daily_leaderboard.sql): the uploaded CSV
+-- (dune.bh2smith.dataset_word_circles_player_names, address varbinary -> name)
+-- covers the bulk, then a live http_post to rpc.aboutcircles.com names ONLY the
+-- creators the CSV missed — keeping the live calls (and thus the per-execution
+-- HTTP count) bounded. Falls back to the truncated 0x address.
 
 WITH created AS (
   SELECT
@@ -71,6 +77,33 @@ revealed AS (
     MIN(wordIndex)       AS word_index   -- index into the answer list (revealed only at settle)
   FROM word_circles_gnosis.wordcommitment_evt_revealed
   GROUP BY gameId
+),
+player_profiles AS (
+  -- Uploaded CSV table: columns (player varbinary address, name varchar)
+  SELECT player AS player_addr, name AS circles_name
+  FROM dune.bh2smith.dataset_word_circles_player_names
+),
+-- Creators the CSV did not name; resolved live below.
+unresolved_creators AS (
+  SELECT DISTINCT c.creator AS player_addr
+  FROM created c
+  LEFT JOIN player_profiles pp ON pp.player_addr = c.creator
+  WHERE NULLIF(pp.circles_name, '') IS NULL
+),
+-- Live fallback: one http_post per unresolved creator (kept small so we stay
+-- under Dune's per-execution HTTP request cap).
+live_profiles AS (
+  SELECT
+    player_addr,
+    json_value(
+      http_post(
+        'https://rpc.aboutcircles.com/',
+        '{"jsonrpc":"2.0","id":1,"method":"circles_getProfileByAddress","params":["0x' || to_hex(player_addr) || '"]}',
+        ARRAY['Content-Type: application/json']
+      ),
+      'lax $.result.name'
+    ) AS circles_name
+  FROM unresolved_creators
 )
 SELECT
   c.gameId                                                        AS game_id,
@@ -79,6 +112,11 @@ SELECT
     WHEN COALESCE(j.players_joined, 1) >= c.capacity THEN 'full · awaiting settlement'
     ELSE 'open · awaiting opponent'
   END                                                             AS status,
+  COALESCE(
+    NULLIF(pp.circles_name, ''),
+    NULLIF(lp.circles_name, ''),
+    '0x' || substr(to_hex(c.creator), 1, 4) || '…' || substr(to_hex(c.creator), -4)
+  )                                                               AS creator_name,
   c.creator,
   CAST(c.capacity AS integer)                                     AS capacity,
   CAST(COALESCE(j.players_joined, 1) AS integer)                  AS players_joined,
@@ -108,4 +146,6 @@ LEFT JOIN joins     j  ON j.gameId  = c.gameId
 LEFT JOIN resolved  r  ON r.gameId  = c.gameId
 LEFT JOIN committed cm ON cm.gameId = c.gameId
 LEFT JOIN revealed  rv ON rv.gameId = c.gameId
+LEFT JOIN player_profiles pp ON pp.player_addr = c.creator
+LEFT JOIN live_profiles   lp ON lp.player_addr = c.creator
 ORDER BY c.created_at DESC
