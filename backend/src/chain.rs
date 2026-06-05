@@ -91,6 +91,12 @@ impl Lobby {
 
     /// Parses the `PVP_LOBBIES` JSON. Malformed JSON logs and yields an empty
     /// list; individual entries with an unparseable address are skipped (logged).
+    ///
+    /// Entries with `capacity != 2` are also skipped (logged): settlement
+    /// (`settlement::determine_winner`) and the PvP UI are hardcoded to two
+    /// players, so a `capacity >= 3` lobby would create on-chain games that
+    /// mis-settle (3rd+ player stakes but can never win). Rejecting at parse
+    /// time prevents that footgun until true N-player support lands (#151).
     pub fn parse(raw: &str) -> Vec<Lobby> {
         let parsed: Vec<LobbyEnv> = match serde_json::from_str(raw) {
             Ok(v) => v,
@@ -101,17 +107,27 @@ impl Lobby {
         };
         parsed
             .into_iter()
-            .filter_map(|l| match (l.group.parse(), l.token.parse(), l.amount.parse()) {
-                (Ok(group), Ok(token), Ok(amount)) => Some(Lobby {
-                    name: l.name,
-                    group,
-                    token,
-                    amount,
-                    capacity: l.capacity,
-                }),
-                _ => {
-                    tracing::error!(lobby = %l.name, "PVP_LOBBIES entry has an invalid address/amount — skipped");
-                    None
+            .filter_map(|l| {
+                if l.capacity != 2 {
+                    tracing::error!(
+                        lobby = %l.name,
+                        capacity = l.capacity,
+                        "PVP_LOBBIES entry has capacity != 2 — skipped (only 2-player games are supported)"
+                    );
+                    return None;
+                }
+                match (l.group.parse(), l.token.parse(), l.amount.parse()) {
+                    (Ok(group), Ok(token), Ok(amount)) => Some(Lobby {
+                        name: l.name,
+                        group,
+                        token,
+                        amount,
+                        capacity: l.capacity,
+                    }),
+                    _ => {
+                        tracing::error!(lobby = %l.name, "PVP_LOBBIES entry has an invalid address/amount — skipped");
+                        None
+                    }
                 }
             })
             .collect()
@@ -592,6 +608,23 @@ mod tests {
         // A bad address in one entry drops just that entry.
         let raw = r#"[{"name":"Bad","group":"0xnothex","token":"0xeeF7B1f06B092625228C835Dd5D5B14641D1e54A","amount":"1"}]"#;
         assert!(Lobby::parse(raw).is_empty());
+    }
+
+    #[test]
+    fn lobbies_with_unsupported_capacity_are_skipped() {
+        // capacity != 2 is a footgun: settlement + UI only handle two players,
+        // so such a lobby would mis-settle. Drop just the offending entry, keep
+        // the valid 2-player one.
+        let raw = r#"[
+            {"name":"ThreeWay","group":"0xc19bc204eb1c1d5b3fe500e5e5dfabab625f286c","token":"0xeeF7B1f06B092625228C835Dd5D5B14641D1e54A","amount":"1","capacity":3},
+            {"name":"Gnosis","group":"0xc19bc204eb1c1d5b3fe500e5e5dfabab625f286c","token":"0xeeF7B1f06B092625228C835Dd5D5B14641D1e54A","amount":"1","capacity":2}
+        ]"#;
+        let lobbies = Lobby::parse(raw);
+        assert_eq!(lobbies.len(), 1);
+        assert_eq!(lobbies[0].name, "Gnosis");
+        // A solo capacity-1 entry is likewise rejected, yielding no lobbies.
+        let solo = r#"[{"name":"Solo","group":"0xc19bc204eb1c1d5b3fe500e5e5dfabab625f286c","token":"0xeeF7B1f06B092625228C835Dd5D5B14641D1e54A","amount":"1","capacity":1}]"#;
+        assert!(Lobby::parse(solo).is_empty());
     }
 
     #[tokio::test]

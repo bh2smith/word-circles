@@ -88,6 +88,63 @@ Look for:
 
 Game state lives in the `pgdata` volume (Postgres). There's no longer a shared SQLite volume — the indexer writes to the same Postgres as the api.
 
+## Backup & rollback
+
+### What's irreplaceable
+
+All off-chain state — games, guesses, and PvP history — lives **only** in the
+`pgdata` Postgres volume, shared by the `api` and `indexer` (arak) services.
+arak's event tables (`created`/`joined`/`resolved`/`game_recorded`) are
+re-derivable from chain by re-syncing, so the **app's `games`/`players`/guess
+rows are the only data that cannot be reconstructed**.
+
+> ⚠️ **Uninstalling the DAppNode package deletes the `pgdata` volume** — and with
+> it every game and guess. Always `pg_dump` first (below). An in-place version
+> rollback (next section) keeps the volume; an uninstall/reinstall does not.
+
+### Take a backup (`pg_dump`)
+
+Run against the postgres container (Postgres 16; role/db both `wordcircles`).
+Use the custom format (`-Fc`) so it can be restored selectively:
+
+```bash
+docker exec DAppNodePackage-word-circles.public.dappnode.eth-postgres \
+  pg_dump -U wordcircles -d wordcircles -Fc \
+  > word-circles-$(date +%Y%m%d-%H%M%S).dump
+```
+
+Copy the resulting `.dump` off the DAppNode host (e.g. `scp`) so it survives a
+package uninstall.
+
+### Restore (`pg_restore`)
+
+Into a running postgres container (e.g. after a fresh reinstall):
+
+```bash
+docker cp word-circles-<timestamp>.dump \
+  DAppNodePackage-word-circles.public.dappnode.eth-postgres:/tmp/restore.dump
+
+docker exec DAppNodePackage-word-circles.public.dappnode.eth-postgres \
+  pg_restore -U wordcircles -d wordcircles --clean --if-exists /tmp/restore.dump
+```
+
+arak's event tables will re-sync from chain on the next indexer start, so a
+restore primarily needs to bring back the app game/guess data.
+
+### Rolling back a release
+
+**Preferred: in-place DAppNode version rollback.** From the package's UI, roll
+back to the previous version. This keeps the `pgdata` volume, so no data is
+lost and no restore is needed.
+
+- **Safe with no schema change.** The api runs migrations forward on startup;
+  rolling the image back to a version that predates a migration can leave the
+  schema ahead of the code. If the rollback crosses a migration boundary,
+  restore a `pg_dump` taken **before** that migration into a clean volume
+  instead of relying on the in-place rollback.
+- When in doubt, take a `pg_dump` before rolling back regardless — it's cheap
+  insurance against an unexpected schema mismatch.
+
 ## Architecture
 
 ```
