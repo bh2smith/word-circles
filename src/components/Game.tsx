@@ -12,7 +12,7 @@ import GroupJoinPrompt from "./GroupJoinPrompt";
 import InviteFriend from "./InviteFriend";
 import InviteWelcome from "./InviteWelcome";
 import type { GuessResult, LetterResult } from "@/lib/game";
-import { MAX_GUESSES, WORD_LENGTH } from "@/lib/game";
+import { WORD_LENGTH } from "@/lib/game";
 import { api } from "@/lib/api/client";
 import {
   isMiniappMode,
