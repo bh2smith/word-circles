@@ -60,7 +60,8 @@ export default function OpponentStatus({
   if (!opponent) {
     return (
       <div className="flex items-center gap-2 text-sm text-neutral-400 bg-neutral-800 rounded-full px-3 py-1.5">
-        <span>Waiting for opponent…</span>
+        <ClockIcon />
+        <span>Opponent pending</span>
       </div>
     );
   }

@@ -721,14 +721,19 @@ export default function PvpGame() {
 
   return (
     <div className="relative flex flex-col items-center gap-4 sm:gap-6 w-full max-w-lg mx-auto px-2 text-white">
-      {Header}
-
-      <OpponentStatus opponent={opponent} settled={settled} />
+      {/* Player on the left, opponent on the right. */}
+      <div className="flex w-full items-center justify-between gap-3">
+        <PlayerProfile
+          address={walletAddress}
+          className="text-neutral-300 text-xs"
+        />
+        <OpponentStatus opponent={opponent} settled={settled} />
+      </div>
 
       {phase === "playing" && game?.status === "open" && (
         <div className="w-full max-w-lg rounded-lg bg-neutral-800/80 px-4 py-2 text-center text-sm text-neutral-300">
           <span className="inline-flex items-center gap-2">
-            You can start now — your opponent will join soon.
+            You can start now, opponent will join soon…
             <span className="inline-flex gap-1">
               <span className="w-2 h-2 bg-green-500 rounded-full animate-bounce [animation-delay:-0.3s]" />
               <span className="w-2 h-2 bg-green-500 rounded-full animate-bounce [animation-delay:-0.15s]" />
