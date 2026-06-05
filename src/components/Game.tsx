@@ -9,6 +9,8 @@ import StatsModal, { EMPTY_STATS, type Stats } from "./StatsModal";
 import InstructionsModal from "./InstructionsModal";
 import Leaderboard, { LeaderboardPanel } from "./Leaderboard";
 import GroupJoinPrompt from "./GroupJoinPrompt";
+import InviteFriend from "./InviteFriend";
+import InviteWelcome from "./InviteWelcome";
 import type { GuessResult, LetterResult } from "@/lib/game";
 import { MAX_GUESSES, WORD_LENGTH } from "@/lib/game";
 import { api } from "@/lib/api/client";
@@ -449,6 +451,10 @@ export default function Game() {
       {/* Game number */}
       <p className="text-neutral-400 text-sm">Game #{gameId}</p>
 
+      {/* Greet newcomers who arrived via an invite link (renders nothing
+          otherwise). */}
+      <InviteWelcome />
+
       {/* Toast */}
       {toast && <Toast message={toast} onDone={() => setToast(null)} />}
 
@@ -474,7 +480,10 @@ export default function Game() {
       {/* Post-win: offer group onboarding to unlock PvP (renders nothing if
           already a member / PvP already available / group not configured). */}
       {status === "won" && walletAddress && (
-        <GroupJoinPrompt address={walletAddress} />
+        <div className="flex w-full max-w-md flex-col items-center gap-3">
+          <GroupJoinPrompt address={walletAddress} />
+          <InviteFriend address={walletAddress} />
+        </div>
       )}
 
       {/* Stats Modal */}

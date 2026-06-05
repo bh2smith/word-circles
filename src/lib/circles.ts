@@ -29,6 +29,39 @@ export function circlesProfileUrl(address: string): string {
   return `https://app.gnosis.io/${address}`;
 }
 
+// A shareable link back to the Word Circles mini-app, tagged with the inviter's
+// address so the landing screen can greet the newcomer ("X invited you"). The
+// Circles host may strip the query param when it opens the embedded mini-app —
+// that's fine, the link still lands them in the app; the ref is a best-effort
+// bonus, not load-bearing. Referral *scoring* is done host-side (Mixpanel), not
+// from this param, so there's deliberately no backend recording here.
+export function buildInviteUrl(inviter: string): string {
+  return `${CIRCLES_MINIAPP_URL}?ref=${inviter.toLowerCase()}`;
+}
+
+export type ShareResult = "shared" | "copied" | "failed";
+
+// Share an invite link via the native share sheet (mobile), falling back to the
+// clipboard. Returns which path succeeded so the UI can show the right feedback.
+export async function shareInvite(inviter: string): Promise<ShareResult> {
+  const url = buildInviteUrl(inviter);
+  const text = "Come play Word Circles with me on Circles!";
+  try {
+    if (typeof navigator !== "undefined" && navigator.share) {
+      await navigator.share({ title: "Word Circles", text, url });
+      return "shared";
+    }
+  } catch {
+    // User dismissed the share sheet, or it's unavailable — fall through to copy.
+  }
+  try {
+    await navigator.clipboard.writeText(url);
+    return "copied";
+  } catch {
+    return "failed";
+  }
+}
+
 export type WalletListener = (address: string | null) => void;
 
 const listeners: Set<WalletListener> = new Set();
