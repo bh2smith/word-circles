@@ -40,6 +40,7 @@ const LOBBY_KEY = "wordcircle-pvp-lobby";
 // we discover the assigned gameId from the backend, then poll until the game
 // fills and the resolver commits the word (status -> "active").
 type Phase =
+  | "preparing" // waiting for a just-left game to fill before re-joining
   | "submitting" // approve + join sent, awaiting wallet
   | "discovering" // looking up the assigned gameId
   | "waiting" // joined, waiting for an opponent
@@ -68,6 +69,11 @@ function loadSaved(): SavedPvp | null {
 // isn't full yet but the creator can already guess; "active" means it's full.
 function isPlayable(status: string | undefined): boolean {
   return status === "open" || status === "active";
+}
+
+// A game has finished settling on-chain (the stake has been paid out).
+function isSettledStatus(status: string | undefined): boolean {
+  return status === "settled" || status === "completed";
 }
 
 // When a player lands in a still-"open" (solo) game, hold their first guess for
@@ -117,6 +123,14 @@ export default function PvpGame() {
   // gameIds the player was already in before the latest join, so we can pick
   // out the newly created one during discovery.
   const beforeIdsRef = useRef<Set<string>>(new Set());
+
+  // The game (and its lobby token) the player most recently left via "Play
+  // Again" / "Stop waiting". Re-joining the SAME lobby while this game is still
+  // solo (not full, not settled) resolves on-chain to the same gameId and
+  // reverts (PlayerAlreadyJoined) — the lobby counter only advances once the
+  // game fills. findMatch uses this to wait for it to fill before re-joining.
+  const prevGameIdRef = useRef<string | null>(null);
+  const prevLobbyTokenRef = useRef<string | null>(null);
 
   // Load config + wallet, and resume any in-progress game.
   useEffect(() => {
@@ -231,7 +245,54 @@ export default function PvpGame() {
       const stake = BigInt(amount);
       const approveData = encodeApprove(escrowAddress, stake);
       const joinData = encodeJoin(resolver, token, stake, capacity);
-      const before = await fetchActiveGames(walletAddress);
+
+      // A re-join into the same lobby reverts while the game we just left is
+      // still solo (the on-chain gameId is deterministic and only rolls over
+      // once the lobby fills). Detect that case so we can wait it out rather
+      // than firing a transaction that reverts with PlayerAlreadyJoined.
+      const blockedByPrev = (games: PvpGameResponse[]): boolean => {
+        if (prevLobbyTokenRef.current !== token) return false;
+        const prev = games.find((g) => g.gameId === prevGameIdRef.current);
+        if (!prev) return false;
+        return (
+          !isSettledStatus(prev.status) && prev.players.length < prev.capacity
+        );
+      };
+
+      let before = await fetchActiveGames(walletAddress);
+      if (blockedByPrev(before)) {
+        if (!selectedLobby.botFunded) {
+          // No bot backstop to fill the prior game, so it could sit solo
+          // indefinitely — don't spin; send the player back to the lobby.
+          setToast(
+            "Your previous game is still waiting for an opponent. It'll settle on its own — try another lobby or check back in a moment.",
+          );
+          setPhase(null);
+          return;
+        }
+        // Bot-funded: an opponent joins within seconds. Wait for the prior game
+        // to fill (or settle), which advances the on-chain counter so the next
+        // join creates a fresh game instead of reverting.
+        setPhase("preparing");
+        const startedAt = Date.now();
+        while (blockedByPrev(before)) {
+          if (Date.now() - startedAt > 20_000) {
+            setToast(
+              "Your previous game is still waiting to fill. Give it a moment, then try again.",
+            );
+            setPhase(null);
+            return;
+          }
+          await new Promise((r) => setTimeout(r, 1500));
+          before = await fetchActiveGames(walletAddress);
+        }
+        setPhase("submitting");
+      }
+      // Past the guard: the prior game has filled/settled (or is unrelated) and
+      // no longer blocks a new one — stop tracking it.
+      prevGameIdRef.current = null;
+      prevLobbyTokenRef.current = null;
+
       beforeIdsRef.current = new Set(before.map((g) => g.gameId));
       // Remember this lobby for next time before the (slow) wallet round-trip.
       selectLobby(selectedLobby);
@@ -449,6 +510,10 @@ export default function PvpGame() {
   }, [onKey]);
 
   const resetToLobby = useCallback(() => {
+    // Remember the game we're leaving so the next findMatch can avoid re-joining
+    // it (which reverts) while it's still solo in the same lobby.
+    prevGameIdRef.current = gameId;
+    prevLobbyTokenRef.current = selectedLobby?.token ?? null;
     clearSaved();
     setPhase(null);
     setGameId(null);
@@ -459,7 +524,7 @@ export default function PvpGame() {
     setSolved(false);
     setGraceUntil(null);
     graceArmedRef.current = false;
-  }, [clearSaved]);
+  }, [clearSaved, gameId, selectedLobby]);
 
   // --- Rendering ---------------------------------------------------------
 
@@ -572,6 +637,18 @@ export default function PvpGame() {
         >
           Find Match
         </button>
+        {toast && <Toast message={toast} onDone={() => setToast(null)} />}
+      </div>
+    );
+  }
+
+  if (phase === "preparing") {
+    return (
+      <div className="flex flex-col items-center gap-4 text-white px-4 text-center">
+        {Header}
+        <p className="text-neutral-400 animate-pulse">
+          Starting your next game…
+        </p>
         {toast && <Toast message={toast} onDone={() => setToast(null)} />}
       </div>
     );
