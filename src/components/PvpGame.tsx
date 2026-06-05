@@ -288,12 +288,16 @@ export default function PvpGame() {
         }
         setPhase("submitting");
       }
+      beforeIdsRef.current = new Set(before.map((g) => g.gameId));
+      // Defensively exclude the game we just left from discovery, even if it
+      // briefly dropped out of the active list during the join — discovery must
+      // only ever latch onto the genuinely new game.
+      if (prevGameIdRef.current)
+        beforeIdsRef.current.add(prevGameIdRef.current);
       // Past the guard: the prior game has filled/settled (or is unrelated) and
       // no longer blocks a new one — stop tracking it.
       prevGameIdRef.current = null;
       prevLobbyTokenRef.current = null;
-
-      beforeIdsRef.current = new Set(before.map((g) => g.gameId));
       // Remember this lobby for next time before the (slow) wallet round-trip.
       selectLobby(selectedLobby);
       // Passing player + stake lets joinPvpGame mint the stake token from the
@@ -331,17 +335,21 @@ export default function PvpGame() {
     const tick = async () => {
       const games = await fetchActiveGames(walletAddress);
       if (!active) return;
+      // Only accept a genuinely NEW game (one we weren't already in before this
+      // join). Falling back to games[0] would latch onto a still-active prior
+      // game the player just left — e.g. a solo, never-settling game on a
+      // non-bot lobby — and render its "finished" status on a cleared board.
+      // If the new game hasn't been indexed yet, keep polling until it appears.
       const fresh = games.find((g) => !beforeIdsRef.current.has(g.gameId));
-      const chosen = fresh ?? games[0];
-      if (chosen) {
-        setGameId(chosen.gameId);
-        setGame(chosen);
+      if (fresh) {
+        setGameId(fresh.gameId);
+        setGame(fresh);
         // "open" (word committed, lobby not yet full) is already playable, so go
         // straight into the room; the "waiting for opponent" state is shown as a
         // banner over the board rather than a blocking screen. Hold the first
         // guess briefly so an opponent still has a chance to join.
-        armGrace(chosen.status);
-        setPhase(isPlayable(chosen.status) ? "playing" : "waiting");
+        armGrace(fresh.status);
+        setPhase(isPlayable(fresh.status) ? "playing" : "waiting");
       } else if (Date.now() - startedAt > 60_000) {
         setToast("Couldn't find your game yet — it may still be pending.");
         setPhase(null);
