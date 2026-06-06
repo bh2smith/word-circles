@@ -1,15 +1,18 @@
 -- Dune: https://dune.com/queries/7647942
--- Word Circles PvP - Player Leaderboard (stakes, winnings, net P&L)
--- All-time per-player PvP economics, derived purely from on-chain escrow events.
+-- Word Circles PvP - Player Leaderboard (record: played / won / lost / profit)
+-- All-time per-player PvP record, derived purely from on-chain escrow events.
 --   • Every participant emits a Joined event, so joins = games entered.
 --   • Each entry stakes the game's `amount` (read from the matching Created).
---   • Resolved carries parallel winners[]/amounts[] arrays; UNNEST zips them so
---     each winner is paired with the CRC they received (a split/draw pays both).
+--   • Resolved carries winners[]/amounts[]. cardinality(winners) splits outcome:
+--       in winners[] & 1 winner   -> WIN  (took the whole pot)
+--       in winners[] & 2 winners  -> DRAW (split pot; lobbies are 2-player)
+--       not in winners[]          -> LOSS
+--   • won_crc zips winners[] with amounts[] so each winner gets the CRC they got.
 --
--- Net P&L is computed over RESOLVED games only — an unsettled game's stake is
--- still escrowed, neither won nor lost — so `staked_crc`/`net_crc` reflect
--- realized outcomes. A "win" here means the player received any payout; on a
--- draw the pot is split, so both players count as paid (see `win_rate_pct`).
+-- Counts/profit are over RESOLVED games only — an unsettled game's stake is still
+-- escrowed, neither won nor lost. net_crc = won_crc - staked_crc is the player's
+-- profit (+/-); it already nets the stake, so it stays correct once a protocol
+-- rake is turned on (the rake just shrinks future payouts).
 --
 -- Player names use the same hybrid resolution as the daily-Wordle boards
 -- (see 01_daily_leaderboard.sql): the uploaded CSV
@@ -27,34 +30,44 @@ WITH game_stake AS (
   SELECT gameId, CAST(amount AS double) AS stake_wei, capacity
   FROM word_circles_gnosis.wordcirclesescrow_evt_created
 ),
-resolved_games AS (
-  SELECT DISTINCT gameId
+-- Resolved games + winners[]; cardinality distinguishes an outright win
+-- (1 winner) from a split/draw (2 winners in a 2-player lobby).
+resolved_detail AS (
+  SELECT gameId, winners, cardinality(winners) AS winner_count
   FROM word_circles_gnosis.wordcirclesescrow_evt_resolved
 ),
--- One row per (game, participant); flag whether that game has settled.
+-- One row per (game, participant); classify the realized outcome.
 entries AS (
   SELECT
     j.player,
     gs.stake_wei,
-    rg.gameId IS NOT NULL AS is_resolved
+    rd.gameId IS NOT NULL AS is_resolved,
+    CASE
+      WHEN rd.gameId IS NULL                                      THEN NULL      -- unsettled
+      WHEN contains(rd.winners, j.player) AND rd.winner_count = 1 THEN 'win'
+      WHEN contains(rd.winners, j.player)                        THEN 'draw'    -- split pot
+      ELSE 'loss'
+    END AS outcome
   FROM word_circles_gnosis.wordcirclesescrow_evt_joined j
-  JOIN game_stake     gs ON gs.gameId = j.gameId
-  LEFT JOIN resolved_games rg ON rg.gameId = j.gameId
+  JOIN game_stake        gs ON gs.gameId = j.gameId
+  LEFT JOIN resolved_detail rd ON rd.gameId = j.gameId
 ),
 entry_aggs AS (
   SELECT
     player,
     COUNT(*)                                          AS games_entered,
     COUNT(*) FILTER (WHERE is_resolved)               AS games_resolved,
+    COUNT(*) FILTER (WHERE outcome = 'win')           AS wins,
+    COUNT(*) FILTER (WHERE outcome = 'loss')          AS losses,
+    COUNT(*) FILTER (WHERE outcome = 'draw')          AS draws,
     SUM(stake_wei) FILTER (WHERE is_resolved)         AS staked_resolved_wei
   FROM entries
   GROUP BY player
 ),
--- Payouts: zip winners[] with amounts[] element-wise.
+-- Payouts: zip winners[] with amounts[] element-wise -> CRC received per player.
 payouts AS (
   SELECT
     winner          AS player,
-    COUNT(*)        AS games_paid,    -- includes draws (a split still pays)
     SUM(amt)        AS won_wei
   FROM word_circles_gnosis.wordcirclesescrow_evt_resolved
   CROSS JOIN UNNEST(winners, amounts) AS t(winner, amt)
@@ -96,10 +109,13 @@ SELECT
   ea.player,
   ea.games_entered,
   ea.games_resolved,
-  COALESCE(po.games_paid, 0)                                              AS games_paid,
-  ROUND(100.0 * COALESCE(po.games_paid, 0) / NULLIF(ea.games_resolved, 0), 1) AS win_rate_pct,
+  ea.wins,
+  ea.losses,
+  ea.draws,
+  ROUND(100.0 * ea.wins / NULLIF(ea.games_resolved, 0), 1)               AS win_rate_pct,
   ROUND(COALESCE(CAST(ea.staked_resolved_wei AS double), 0) / 1e18, 3)    AS staked_crc,
   ROUND(COALESCE(CAST(po.won_wei AS double), 0) / 1e18, 3)               AS won_crc,
+  -- Net profit (+/-): CRC won minus CRC staked over resolved games.
   ROUND(
     (COALESCE(CAST(po.won_wei AS double), 0)
        - COALESCE(CAST(ea.staked_resolved_wei AS double), 0)) / 1e18,
