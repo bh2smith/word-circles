@@ -1,11 +1,15 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { decodeFunctionData, getAddress } from "viem";
+import * as realContract from "./contract";
+import { hubAbi, wrapperAbi } from "./contract";
 
 // joinPvpGame decides whether to prepend a (groupMint + wrap) "lift" before the
 // approve+join, unwrapping the player's wrapped personal CRC first when their
 // un-wrapped balance is short, and throwing NoCirclesError only when even the
-// wrapped balance can't cover the stake. We mock the on-chain reads (./contract)
-// and the wallet (miniapp SDK), and stub the Circles RPC (global fetch), so we
-// can drive that decision directly and pin the batch it submits.
+// wrapped balance can't cover the stake. We stub the on-chain *reads* of
+// ./contract (spreading the real module so its encoders/ABIs stay intact for
+// other test files — mock.module is global), the wallet (miniapp SDK), and the
+// Circles RPC (global fetch), then assert the batch joinPvpGame submits.
 //
 // The decision inputs:
 //   held       = getErc20Balance(token, player)   — s-gCRC the player already has
@@ -17,7 +21,6 @@ let wrapAmount = 0n;
 let personal = 0n;
 let tokenRows: Record<string, unknown>[] = [];
 let sent: { to: string; data: string }[][] = [];
-const unwrapAmounts: bigint[] = [];
 
 const GROUP = "0xC19BC204eb1c1D5B3FE500E5E5dfaBaB625F286c";
 const TOKEN = "0xeeF7B1f06B092625228C835Dd5D5B14641D1e54A";
@@ -25,6 +28,9 @@ const PLAYER = "0x09c24767a7f9f7b1d021189b68f7a5aea3cee458"; // twalther
 const ESCROW = "0x0000000000000000000000000000000000000E5C";
 // twalther's own demurraged wrapper, holding his 103 CRC (from the bug report).
 const WRAPPER = "0xa2713c354fdb82ceb9df0b03badf0c9c9cc5eb61";
+const HUB = realContract.HUB_ADDRESS;
+const APPROVE = "0xapprovedata";
+const JOIN = "0xjoindata";
 
 mock.module("@aboutcircles/miniapp-sdk", () => ({
   isMiniappMode: () => true,
@@ -40,19 +46,14 @@ mock.module("./api/client", () => ({
   api: { POST: async () => ({ data: {} }) },
 }));
 
+// Spread the real module so erc20Abi, the encoders, etc. stay real for
+// contract.test.ts; override only the four on-chain reads joinPvpGame makes.
 mock.module("./contract", () => ({
-  HUB_ADDRESS: "0xHUB",
+  ...realContract,
   getErc20Balance: async () => held,
   getPersonalCrcBalance: async () => personal,
   getTokenAvatar: async () => GROUP,
   staticToDemurrage: async () => wrapAmount,
-  encodeApprove: () => "0xapprove",
-  encodeGroupMint: () => "0xmint",
-  encodeWrap: () => "0xwrap",
-  encodeUnwrap: (amount: bigint) => {
-    unwrapAmounts.push(amount);
-    return "0xunwrap";
-  },
 }));
 
 const { joinPvpGame, NoCirclesError, planUnwraps } = await import("./circles");
@@ -83,21 +84,41 @@ function call() {
   return joinPvpGame({
     escrow: ESCROW,
     token: TOKEN,
-    approveData: "0xapprove",
-    joinData: "0xjoin",
+    approveData: APPROVE,
+    joinData: JOIN,
     player: PLAYER,
     stake: STAKE,
   });
 }
 
-function dataSeq() {
-  return sent[0].map((t) => t.data);
+// Summarise the submitted batch as [function-name, target] pairs. The lift txs
+// (unwrap/groupMint/wrap) carry real calldata we decode; approve/join are the
+// opaque pre-built blobs passed in, matched by their raw data.
+function batch() {
+  return sent[0].map((tx) => {
+    if (tx.data === APPROVE) return { fn: "approve", to: tx.to };
+    if (tx.data === JOIN) return { fn: "join", to: tx.to };
+    const { functionName } = decodeFunctionData({
+      abi: [...hubAbi, ...wrapperAbi],
+      data: tx.data as `0x${string}`,
+    });
+    return { fn: functionName, to: tx.to };
+  });
+}
+
+function unwrapAmount(tx: { data: string }) {
+  const { functionName, args } = decodeFunctionData({
+    abi: wrapperAbi,
+    data: tx.data as `0x${string}`,
+  });
+  if (functionName !== "unwrap")
+    throw new Error(`expected unwrap, got ${functionName}`);
+  return args[0] as bigint;
 }
 
 beforeEach(() => {
   sent = [];
   tokenRows = [];
-  unwrapAmounts.length = 0;
   held = 0n;
   wrapAmount = STAKE; // round-trips to ~the stake
   personal = 0n;
@@ -113,15 +134,22 @@ describe("joinPvpGame lift decision", () => {
     held = STAKE;
     await call();
     expect(sent).toHaveLength(1);
-    expect(dataSeq()).toEqual(["0xapprove", "0xjoin"]);
+    expect(batch()).toEqual([
+      { fn: "approve", to: TOKEN },
+      { fn: "join", to: ESCROW },
+    ]);
   });
 
   test("holds enough un-wrapped CRC — lifts with [mint, wrap, approve, join]", async () => {
     held = 0n;
     personal = 100n * CRC; // plenty of un-wrapped ERC-1155 in the Hub
     await call();
-    expect(dataSeq()).toEqual(["0xmint", "0xwrap", "0xapprove", "0xjoin"]);
-    expect(unwrapAmounts).toHaveLength(0); // no unwrap needed
+    expect(batch()).toEqual([
+      { fn: "groupMint", to: HUB },
+      { fn: "wrap", to: HUB },
+      { fn: "approve", to: TOKEN },
+      { fn: "join", to: ESCROW },
+    ]);
   });
 
   // Regression for the twalther report (0x09c2…e458): can't enter PvP in either
@@ -133,15 +161,15 @@ describe("joinPvpGame lift decision", () => {
     personal = DUST; // un-wrapped Hub balance is dust...
     tokenRows = [demurragedRow(PLAYER, 103n * CRC, 155n * CRC)]; // ...103 CRC wrapped
     await call();
-    expect(dataSeq()).toEqual([
-      "0xunwrap",
-      "0xmint",
-      "0xwrap",
-      "0xapprove",
-      "0xjoin",
+    expect(batch()).toEqual([
+      { fn: "unwrap", to: getAddress(WRAPPER) },
+      { fn: "groupMint", to: HUB },
+      { fn: "wrap", to: HUB },
+      { fn: "approve", to: TOKEN },
+      { fn: "join", to: ESCROW },
     ]);
     // Demurraged wrapper unwraps 1:1, so we free exactly (wrapAmount - dust).
-    expect(unwrapAmounts).toEqual([STAKE - DUST]);
+    expect(unwrapAmount(sent[0][0])).toBe(STAKE - DUST);
   });
 
   test("wrapped CRC owned by a DIFFERENT avatar is ignored", async () => {
@@ -199,7 +227,7 @@ describe("planUnwraps", () => {
 
   test("prefers demurraged, spilling the remainder onto an inflationary wrapper", () => {
     const D = "0xD000000000000000000000000000000000000000";
-    const I = "0xI000000000000000000000000000000000000000";
+    const I = "0xi000000000000000000000000000000000000000";
     const need = 3n * CRC;
     const plan = planUnwraps(need, [
       {
