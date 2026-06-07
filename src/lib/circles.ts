@@ -11,6 +11,7 @@ import { getAddress } from "viem";
 import {
   encodeApprove,
   encodeGroupMint,
+  encodeUnwrap,
   encodeWrap,
   getErc20Balance,
   getPersonalCrcBalance,
@@ -104,8 +105,9 @@ export async function submitGameResult(
 }
 
 // Thrown when the player can't be lifted into the stake token because their
-// personal CRC balance is below the demurraged collateral the groupMint needs.
-// Carries both amounts so the UI can show the shortfall in CRC units.
+// personal CRC — un-wrapped (ERC-1155) plus anything held as a wrapped ERC-20 —
+// is below the demurraged collateral the groupMint needs. Carries both amounts
+// so the UI can show the shortfall in CRC units.
 export class NoCirclesError extends Error {
   readonly available: bigint;
   readonly required: bigint;
@@ -129,17 +131,121 @@ export interface JoinPvpParams {
   stake?: bigint;
 }
 
+export interface WrappedPersonalCrc {
+  // The ERC-20 wrapper contract to call unwrap() on.
+  token: string;
+  // true = inflationary/static wrapper (unwrap amount is static), false =
+  // demurraged wrapper (unwrap amount is demurraged, credited 1:1).
+  inflationary: boolean;
+  demurraged: bigint; // attoCircles
+  staticAmount: bigint; // staticAttoCircles
+}
+
+interface TokenBalanceRow {
+  tokenOwner: string;
+  tokenAddress: string;
+  attoCircles: string;
+  staticAttoCircles: string;
+  isErc20: boolean;
+  isWrapped: boolean;
+  isInflationary: boolean;
+  isGroup: boolean;
+}
+
+// The player's OWN wrapped personal CRC (ERC-20 wrappers of their own avatar),
+// via the Circles JSON-RPC `circles_getTokenBalances`. groupMint can only draw
+// un-wrapped ERC-1155 personal CRC, so when a player's CRC is wrapped we unwrap
+// just enough of these first. Group tokens and other avatars' tokens are filtered
+// out. Best-effort: returns [] on any error, so the caller falls back to "no
+// circles" rather than erroring.
+export async function fetchWrappedPersonalCrc(
+  player: string,
+): Promise<WrappedPersonalCrc[]> {
+  try {
+    const res = await fetch(CIRCLES_RPC, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "circles_getTokenBalances",
+        params: [player],
+      }),
+    });
+    if (!res.ok) return [];
+    const body: { result?: TokenBalanceRow[] } = await res.json();
+    const owner = player.toLowerCase();
+    const out: WrappedPersonalCrc[] = [];
+    for (const row of body.result ?? []) {
+      if (
+        row.isErc20 &&
+        row.isWrapped &&
+        !row.isGroup &&
+        row.tokenOwner?.toLowerCase() === owner
+      ) {
+        out.push({
+          token: getAddress(row.tokenAddress),
+          inflationary: row.isInflationary,
+          demurraged: BigInt(row.attoCircles),
+          staticAmount: BigInt(row.staticAttoCircles),
+        });
+      }
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+// Decide which wrapped tokens to unwrap (and how much of each) to free `need`
+// demurraged CRC of ERC-1155 collateral. Demurraged wrappers go first because
+// unwrap() is exact there (1:1 in demurraged units). Inflationary wrappers are
+// sized from their own static/demurraged ratio with a 1-wei cushion (unwrap
+// floors the credited amount), capped at the balance; over-unwrapping only leaves
+// the player spare un-wrapped CRC. Returns null if the wrapped balances, summed,
+// still can't cover `need`.
+export function planUnwraps(
+  need: bigint,
+  wrapped: WrappedPersonalCrc[],
+): { token: string; amount: bigint }[] | null {
+  const ordered = [...wrapped].sort(
+    (a, b) => Number(a.inflationary) - Number(b.inflationary),
+  );
+  const plan: { token: string; amount: bigint }[] = [];
+  let remaining = need;
+  for (const w of ordered) {
+    if (remaining <= 0n) break;
+    if (w.demurraged <= 0n) continue;
+    if (!w.inflationary) {
+      const take = remaining < w.demurraged ? remaining : w.demurraged;
+      plan.push({ token: w.token, amount: take });
+      remaining -= take;
+    } else if (w.demurraged <= remaining) {
+      plan.push({ token: w.token, amount: w.staticAmount });
+      remaining -= w.demurraged;
+    } else {
+      let take =
+        (remaining * w.staticAmount + w.demurraged - 1n) / w.demurraged + 1n;
+      if (take > w.staticAmount) take = w.staticAmount;
+      plan.push({ token: w.token, amount: take });
+      remaining = 0n;
+    }
+  }
+  return remaining <= 0n ? plan : null;
+}
+
 // Enter PvP matchmaking in a single batched submission. If the player lacks the
-// stake token, the batch is [groupMint, wrap, approve, join]; otherwise just
-// [approve, join] (join does safeTransferFrom, so approval must come first). The
-// (group, type=1) wrapper is already deployed and equals `token`, so approve can
-// target it directly without reading wrap()'s return value. The group avatar is
-// read from the token itself (token.avatar()), so no extra config is needed. The
-// escrow assigns the gameId on-chain; discover it afterwards via
+// stake token, the batch is [unwrap?, groupMint, wrap, approve, join]; otherwise
+// just [approve, join] (join does safeTransferFrom, so approval must come first).
+// The (group, type=1) wrapper is already deployed and equals `token`, so approve
+// can target it directly without reading wrap()'s return value. The group avatar
+// is read from the token itself (token.avatar()), so no extra config is needed.
+// The escrow assigns the gameId on-chain; discover it afterwards via
 // GET /api/games?player=<address>.
 //
-// Throws NoCirclesError if the player holds neither the stake token nor any
-// personal CRC the group can mint — i.e. they can't play.
+// Throws NoCirclesError if the player holds neither the stake token nor enough
+// personal CRC — un-wrapped or wrapped — for the group to mint, i.e. they can't
+// play.
 export async function joinPvpGame(params: JoinPvpParams) {
   const { escrow, token, approveData, joinData, player, stake } = params;
 
@@ -154,9 +260,30 @@ export async function joinPvpGame(params: JoinPvpParams) {
       const group = await getTokenAvatar(token);
       const wrapAmount = await staticToDemurrage(token, stake);
       const personal = await getPersonalCrcBalance(player);
+
+      // groupMint can only draw UN-WRAPPED personal CRC (ERC-1155 held in the
+      // Hub). Most wallets keep their CRC as a wrapped ERC-20 though, so when the
+      // un-wrapped balance is short we unwrap just enough of the player's own
+      // wrapped personal CRC back into the Hub first. unwrap() burns their ERC-20
+      // and credits ERC-1155 — no approval, no extra signature. Only when even the
+      // wrapped balance can't cover it does the player genuinely lack the circles.
       if (personal < wrapAmount) {
-        throw new NoCirclesError(personal, wrapAmount);
+        const wrapped = await fetchWrappedPersonalCrc(player);
+        const unwraps = planUnwraps(wrapAmount - personal, wrapped);
+        if (!unwraps) {
+          const available =
+            personal + wrapped.reduce((sum, w) => sum + w.demurraged, 0n);
+          throw new NoCirclesError(available, wrapAmount);
+        }
+        for (const u of unwraps) {
+          lift.push({
+            to: u.token,
+            data: encodeUnwrap(u.amount),
+            value: "0x0",
+          });
+        }
       }
+
       lift.push(
         {
           to: HUB_ADDRESS,

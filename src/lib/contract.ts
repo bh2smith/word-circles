@@ -65,6 +65,7 @@ export const wrapperAbi = parseAbi([
   "function convertInflationaryToDemurrageValue(uint256 value, uint64 day) view returns (uint256)",
   "function convertDemurrageToInflationaryValue(uint256 value, uint64 day) view returns (uint256)",
   "function avatar() view returns (address)",
+  "function unwrap(uint256 amount)",
 ]);
 
 export const escrowAbi = parseAbi([
@@ -174,6 +175,20 @@ export function encodeWrap(avatar: string, amount: bigint): string {
     abi: hubAbi,
     functionName: "wrap",
     args: [avatar as `0x${string}`, amount, CIRCLES_TYPE_INFLATION],
+  });
+}
+
+// Burn `amount` of a Circles ERC-20 wrapper, crediting the caller's personal CRC
+// back as ERC-1155 in the Hub so groupMint can draw it as collateral. For a
+// demurraged wrapper `amount` is demurraged (credited 1:1); for an inflationary
+// wrapper it's the static amount. No approval needed — unwrap burns the caller's
+// own balance. Selector 0xde0e9a3e, verified on-chain against the Circles v2
+// wrapper implementation on Gnosis.
+export function encodeUnwrap(amount: bigint): string {
+  return encodeFunctionData({
+    abi: wrapperAbi,
+    functionName: "unwrap",
+    args: [amount],
   });
 }
 
