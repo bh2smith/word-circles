@@ -27,6 +27,14 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Foundry/Solidity submodules: never our JS/TS. Without this ESLint descends
+    // into these vendored dirs and lints (or chokes on) their contents (#180).
+    "lib/**",
+    // Rust backend + build caches. backend/target is gitignored and full of
+    // minified vendored JS (swagger-ui) that produces thousands of bogus
+    // findings locally; CI never sees it because it isn't built before lint.
+    "backend/**",
+    "cache/**",
   ]),
 ]);
 
