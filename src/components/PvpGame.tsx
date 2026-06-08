@@ -9,6 +9,7 @@ import OpponentStatus from "./OpponentStatus";
 import PvpResults from "./PvpResults";
 import PlayerProfile from "./PlayerProfile";
 import GroupPicker from "./GroupPicker";
+import ConnectAccount from "./ConnectAccount";
 import { usePvpLobbies } from "@/lib/usePvpLobbies";
 import { formatUnits } from "viem";
 import type { GuessResult, LetterResult } from "@/lib/game";
@@ -559,7 +560,7 @@ export default function PvpGame() {
             ? "PvP runs inside the Circles app — open Word Circles there to stake and race."
             : "Connect your Circles wallet to play head-to-head."}
         </p>
-        {standalone && (
+        {standalone ? (
           <a
             href={CIRCLES_MINIAPP_URL}
             target="_blank"
@@ -568,6 +569,8 @@ export default function PvpGame() {
           >
             Open in Circles
           </a>
+        ) : (
+          <ConnectAccount />
         )}
       </div>
     );

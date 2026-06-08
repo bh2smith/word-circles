@@ -11,6 +11,7 @@ import Leaderboard, { LeaderboardPanel } from "./Leaderboard";
 import GroupJoinPrompt from "./GroupJoinPrompt";
 import InviteFriend from "./InviteFriend";
 import InviteWelcome from "./InviteWelcome";
+import ConnectAccount from "./ConnectAccount";
 import type { GuessResult, LetterResult } from "@/lib/game";
 import { WORD_LENGTH } from "@/lib/game";
 import { api } from "@/lib/api/client";
@@ -338,7 +339,7 @@ export default function Game() {
             ? "Word Circles runs as a mini-app inside the Circles app."
             : "Connect your Circles wallet to play today's word."}
         </p>
-        {standalone && (
+        {standalone ? (
           <a
             href={CIRCLES_MINIAPP_URL}
             target="_blank"
@@ -347,6 +348,8 @@ export default function Game() {
           >
             Open in Circles
           </a>
+        ) : (
+          <ConnectAccount />
         )}
         <div className="w-full bg-neutral-800 rounded-xl p-6 max-h-[70vh] flex flex-col">
           <h2 className="text-center text-lg font-bold mb-4 uppercase tracking-wider">

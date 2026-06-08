@@ -3,6 +3,7 @@
 import {
   isMiniappMode,
   onWalletChange,
+  requestCreateAccount,
   sendTransactions,
   signMessage,
   type Transaction,
@@ -93,6 +94,18 @@ export function subscribeWallet(fn: WalletListener): () => void {
 
 export function getConnectedAddress(): string | null {
   return currentAddress;
+}
+
+// Ask the host to open its passkey-backed "create or connect account" flow. The
+// host owns account creation, login, and (for users arriving via a native invite
+// link) the invitation flow — we just trigger it. MUST be called straight from a
+// user gesture (click): browsers block the WebAuthn passkey prompt otherwise.
+// Resolves with the address; rejects if the user cancels. The connection state
+// itself propagates through onWalletChange/subscribeWallet, so callers generally
+// don't need the return value — it's there for immediate button error handling.
+export async function connectAccount(): Promise<string> {
+  const { address } = await requestCreateAccount();
+  return getAddress(address);
 }
 
 export async function submitGameResult(

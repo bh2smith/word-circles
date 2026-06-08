@@ -35,6 +35,7 @@ const JOIN = "0xjoindata";
 mock.module("@aboutcircles/miniapp-sdk", () => ({
   isMiniappMode: () => true,
   onWalletChange: () => {},
+  requestCreateAccount: async () => ({ authenticated: true, address: PLAYER }),
   sendTransactions: async (txs: { to: string; data: string }[]) => {
     sent.push(txs);
     return { hash: "0x" };
