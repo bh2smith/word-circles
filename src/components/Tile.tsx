@@ -3,9 +3,9 @@
 import type { LetterResult } from "@/lib/game";
 
 const colorMap: Record<LetterResult, string> = {
-  correct: "bg-green-600 border-green-600 text-white",
-  present: "bg-yellow-500 border-yellow-500 text-white",
-  absent: "bg-neutral-700 border-neutral-700 text-white",
+  correct: "bg-correct border-correct text-state-foreground",
+  present: "bg-present border-present text-state-foreground",
+  absent: "bg-absent border-absent text-state-foreground",
 };
 
 interface TileProps {
@@ -16,15 +16,16 @@ interface TileProps {
 
 export default function Tile({ letter, result, isCurrent }: TileProps) {
   const base =
-    "w-14 h-14 sm:w-16 sm:h-16 border-2 flex items-center justify-center text-2xl sm:text-3xl font-bold uppercase transition-colors duration-300 select-none";
+    "w-14 h-14 sm:w-16 sm:h-16 rounded-xl border-2 flex items-center justify-center text-2xl sm:text-3xl font-bold uppercase transition-all duration-200 select-none";
 
   let style: string;
   if (result) {
-    style = colorMap[result];
+    // Resolved tile: brand state color with a brief pop on reveal.
+    style = `${colorMap[result]} shadow-sm animate-pop-in`;
   } else if (letter) {
-    style = "border-neutral-500 text-white bg-transparent";
+    style = "border-tile-filled text-foreground bg-surface scale-105";
   } else {
-    style = "border-neutral-600 text-white bg-transparent";
+    style = "border-tile-empty text-foreground bg-surface/40";
   }
 
   return (

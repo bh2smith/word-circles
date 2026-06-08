@@ -15,9 +15,9 @@ const resultPriority: Record<LetterResult, number> = {
 };
 
 const resultColors: Record<LetterResult, string> = {
-  correct: "bg-green-600 text-white border-green-600",
-  present: "bg-yellow-500 text-white border-yellow-500",
-  absent: "bg-neutral-700 text-neutral-400 border-neutral-700",
+  correct: "bg-correct text-state-foreground border-correct",
+  present: "bg-present text-state-foreground border-present",
+  absent: "bg-absent text-state-foreground border-absent",
 };
 
 interface KeyboardProps {
@@ -40,14 +40,14 @@ export default function Keyboard({
             const isWide = key === "Enter" || key === "⌫";
             const colorClass = state
               ? resultColors[state]
-              : "bg-neutral-500 text-white border-neutral-500";
+              : "bg-key-idle text-key-idle-foreground border-transparent hover:brightness-105";
 
             return (
               <button
                 key={key}
                 onClick={() => onKey(key)}
                 disabled={disabled}
-                className={`${colorClass} ${isWide ? "px-3 sm:px-4 text-xs sm:text-sm" : "w-8 sm:w-10 text-sm sm:text-base"} h-12 sm:h-14 rounded font-semibold uppercase border transition-colors select-none active:brightness-75 disabled:opacity-50`}
+                className={`${colorClass} ${isWide ? "px-3 sm:px-4 text-xs sm:text-sm" : "w-8 sm:w-10 text-sm sm:text-base"} h-12 sm:h-14 rounded-lg font-semibold uppercase border transition-all select-none active:scale-95 active:brightness-90 disabled:opacity-50`}
               >
                 {key}
               </button>

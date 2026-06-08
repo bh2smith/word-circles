@@ -81,20 +81,20 @@ export function LeaderboardPanel({ gameId }: { gameId: number | null }) {
       <div className="flex gap-2 mb-4">
         <button
           onClick={() => setTab("daily")}
-          className={`flex-1 py-1.5 rounded text-sm font-semibold transition-colors ${
+          className={`flex-1 py-1.5 rounded-full text-sm font-semibold transition-colors ${
             tab === "daily"
-              ? "bg-green-600 text-white"
-              : "bg-neutral-700 text-neutral-400 hover:text-white"
+              ? "bg-primary text-primary-foreground shadow-sm"
+              : "bg-surface-2 text-muted hover:text-foreground"
           }`}
         >
           Today #{gameId}
         </button>
         <button
           onClick={() => setTab("overall")}
-          className={`flex-1 py-1.5 rounded text-sm font-semibold transition-colors ${
+          className={`flex-1 py-1.5 rounded-full text-sm font-semibold transition-colors ${
             tab === "overall"
-              ? "bg-green-600 text-white"
-              : "bg-neutral-700 text-neutral-400 hover:text-white"
+              ? "bg-primary text-primary-foreground shadow-sm"
+              : "bg-surface-2 text-muted hover:text-foreground"
           }`}
         >
           All Time
@@ -103,7 +103,7 @@ export function LeaderboardPanel({ gameId }: { gameId: number | null }) {
 
       <div className="flex-1 overflow-y-auto min-h-0">
         {loading ? (
-          <p className="text-center text-neutral-400 py-8">Loading...</p>
+          <p className="text-center text-muted py-8">Loading...</p>
         ) : tab === "daily" ? (
           <DailyTable results={daily} profiles={profiles} />
         ) : (
@@ -123,14 +123,14 @@ export default function Leaderboard({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-overlay backdrop-blur-sm"
       onClick={onClose}
     >
       <div
-        className="bg-neutral-800 rounded-xl p-6 max-w-md w-full mx-4 text-white max-h-[80vh] flex flex-col"
+        className="bg-surface border border-border shadow-xl rounded-2xl p-6 max-w-md w-full mx-4 text-foreground max-h-[80vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-center text-lg font-bold mb-4 uppercase tracking-wider">
+        <h2 className="text-center text-lg font-bold mb-4 uppercase tracking-wide">
           Leaderboard
         </h2>
 
@@ -138,7 +138,7 @@ export default function Leaderboard({
 
         <button
           onClick={onClose}
-          className="mt-4 w-full py-2 bg-green-600 rounded font-bold hover:bg-green-700 transition-colors"
+          className="mt-4 w-full py-2.5 bg-primary text-primary-foreground rounded-full font-bold transition hover:opacity-90 active:scale-[0.98]"
         >
           Close
         </button>
@@ -161,7 +161,7 @@ function PlayerCell({
         href={circlesProfileUrl(address)}
         target="_blank"
         rel="noopener noreferrer"
-        className="flex items-center gap-2 min-w-0 hover:text-green-400 transition-colors"
+        className="flex items-center gap-2 min-w-0 hover:text-primary transition-colors"
       >
         {profile?.previewImageUrl ? (
           // Circles preview avatar from an arbitrary host/data URL; next/image
@@ -174,7 +174,7 @@ function PlayerCell({
             className="w-5 h-5 rounded-full shrink-0"
           />
         ) : (
-          <div className="w-5 h-5 rounded-full bg-neutral-600 shrink-0" />
+          <div className="w-5 h-5 rounded-full bg-surface-2 shrink-0" />
         )}
         <span className="truncate text-sm">
           {profile?.name ?? truncateAddress(address)}
@@ -192,14 +192,12 @@ function OverallTable({
   profiles: Map<string, CirclesProfile>;
 }) {
   if (entries.length === 0) {
-    return (
-      <p className="text-center text-neutral-400 py-8">No games played yet.</p>
-    );
+    return <p className="text-center text-muted py-8">No games played yet.</p>;
   }
   return (
     <table className="w-full text-sm">
       <thead>
-        <tr className="text-neutral-400 text-xs uppercase tracking-wider">
+        <tr className="text-muted text-xs uppercase tracking-wide">
           <th className="text-left py-1">#</th>
           <th className="text-left py-1">Player</th>
           <th className="text-right py-1">Wins</th>
@@ -209,8 +207,8 @@ function OverallTable({
       </thead>
       <tbody>
         {entries.map((entry, i) => (
-          <tr key={entry.address} className="border-t border-neutral-700">
-            <td className="py-1.5 text-neutral-400">{i + 1}</td>
+          <tr key={entry.address} className="border-t border-border">
+            <td className="py-1.5 text-muted">{i + 1}</td>
             <PlayerCell address={entry.address} profiles={profiles} />
             <td className="py-1.5 text-right">{entry.wins}</td>
             <td className="py-1.5 text-right">{entry.games_played}</td>
@@ -233,7 +231,7 @@ function DailyTable({
 }) {
   if (results.length === 0) {
     return (
-      <p className="text-center text-neutral-400 py-8">
+      <p className="text-center text-muted py-8">
         No results for this game yet.
       </p>
     );
@@ -241,7 +239,7 @@ function DailyTable({
   return (
     <table className="w-full text-sm">
       <thead>
-        <tr className="text-neutral-400 text-xs uppercase tracking-wider">
+        <tr className="text-muted text-xs uppercase tracking-wide">
           <th className="text-left py-1">#</th>
           <th className="text-left py-1">Player</th>
           <th className="text-right py-1">Guesses</th>
@@ -250,15 +248,15 @@ function DailyTable({
       </thead>
       <tbody>
         {results.map((result, i) => (
-          <tr key={result.address} className="border-t border-neutral-700">
-            <td className="py-1.5 text-neutral-400">{i + 1}</td>
+          <tr key={result.address} className="border-t border-border">
+            <td className="py-1.5 text-muted">{i + 1}</td>
             <PlayerCell address={result.address} profiles={profiles} />
             <td className="py-1.5 text-right">{result.guesses}</td>
             <td className="py-1.5 text-right">
               {result.solved ? (
-                <span className="text-green-400">Solved</span>
+                <span className="font-semibold text-correct">Solved</span>
               ) : (
-                <span className="text-neutral-500">Miss</span>
+                <span className="text-faint">Miss</span>
               )}
             </td>
           </tr>

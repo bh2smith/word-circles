@@ -5,9 +5,9 @@ import type { PvpPlayerStatus } from "@/lib/api";
 
 const PlayingDots = () => (
   <span className="inline-flex gap-0.5">
-    <span className="w-1.5 h-1.5 bg-yellow-400 rounded-full animate-bounce [animation-delay:-0.3s]" />
-    <span className="w-1.5 h-1.5 bg-yellow-400 rounded-full animate-bounce [animation-delay:-0.15s]" />
-    <span className="w-1.5 h-1.5 bg-yellow-400 rounded-full animate-bounce" />
+    <span className="w-1.5 h-1.5 bg-present rounded-full animate-bounce [animation-delay:-0.3s]" />
+    <span className="w-1.5 h-1.5 bg-present rounded-full animate-bounce [animation-delay:-0.15s]" />
+    <span className="w-1.5 h-1.5 bg-present rounded-full animate-bounce" />
   </span>
 );
 
@@ -59,7 +59,7 @@ export default function OpponentStatus({
 }) {
   if (!opponent) {
     return (
-      <div className="flex items-center gap-2 text-sm text-neutral-400 bg-neutral-800 rounded-full px-3 py-1.5">
+      <div className="flex items-center gap-2 text-sm text-muted bg-surface-2 border border-border rounded-full px-3 py-1.5">
         <ClockIcon />
         <span>Opponent pending</span>
       </div>
@@ -73,38 +73,36 @@ export default function OpponentStatus({
     case "finished":
       icon = <CheckIcon />;
       label = "Opponent finished";
-      tone = "text-green-400";
+      tone = "text-correct";
       break;
     case "timed_out":
       icon = <ClockIcon />;
       label = "Opponent timed out";
-      tone = "text-orange-400";
+      tone = "text-secondary";
       break;
     case "playing":
       icon = <PlayingDots />;
       label = "Opponent is playing";
-      tone = "text-yellow-400";
+      tone = "text-present";
       break;
     default:
       icon = null;
       label = "Opponent hasn't started";
-      tone = "text-neutral-400";
+      tone = "text-muted";
   }
 
   return (
-    <div className="flex items-center gap-2 text-sm bg-neutral-800 rounded-full px-3 py-1.5">
+    <div className="flex items-center gap-2 text-sm bg-surface-2 border border-border rounded-full px-3 py-1.5">
       <PlayerProfile
         address={opponent.address}
-        className="text-neutral-300 text-xs"
+        className="text-muted text-xs"
       />
       <span className={`flex items-center gap-1.5 ${tone}`}>
         {icon}
         {label}
       </span>
       {settled && (
-        <span className="text-neutral-400">
-          · {opponent.guessCount} guesses
-        </span>
+        <span className="text-muted">· {opponent.guessCount} guesses</span>
       )}
     </div>
   );

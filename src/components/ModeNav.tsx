@@ -18,24 +18,26 @@ export default function ModeNav() {
   // (undefined) so we never flash a tab the backend can't serve.
   if (!pvpEnabled) return null;
   return (
-    <nav className="flex justify-center gap-2 pt-4">
-      {TABS.map((t) => {
-        // Exact match, so /pvp/history doesn't also light up the /pvp tab.
-        const active = pathname === t.href;
-        return (
-          <Link
-            key={t.href}
-            href={t.href}
-            className={`px-4 py-1.5 rounded text-sm font-semibold transition-colors ${
-              active
-                ? "bg-green-600 text-white"
-                : "bg-neutral-800 text-neutral-400 hover:text-white"
-            }`}
-          >
-            {t.label}
-          </Link>
-        );
-      })}
+    <nav className="flex justify-center pt-4">
+      <div className="flex gap-1 rounded-full border border-border bg-surface/70 p-1 shadow-sm backdrop-blur">
+        {TABS.map((t) => {
+          // Exact match, so /pvp/history doesn't also light up the /pvp tab.
+          const active = pathname === t.href;
+          return (
+            <Link
+              key={t.href}
+              href={t.href}
+              className={`rounded-full px-4 py-1.5 text-sm font-semibold transition-colors ${
+                active
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted hover:text-foreground hover:bg-primary-soft"
+              }`}
+            >
+              {t.label}
+            </Link>
+          );
+        })}
+      </div>
     </nav>
   );
 }

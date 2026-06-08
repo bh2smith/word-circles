@@ -39,10 +39,10 @@ function truncate(addr: string): string {
 
 function OutcomeBadge({ outcome }: { outcome: HistoryOutcome }) {
   const map: Record<HistoryOutcome, { label: string; cls: string }> = {
-    ongoing: { label: "In progress", cls: "bg-yellow-500/15 text-yellow-400" },
-    won: { label: "Won", cls: "bg-green-500/15 text-green-400" },
-    lost: { label: "Lost", cls: "bg-red-500/15 text-red-400" },
-    draw: { label: "Draw", cls: "bg-neutral-500/15 text-neutral-300" },
+    ongoing: { label: "In progress", cls: "bg-present/15 text-present" },
+    won: { label: "Won", cls: "bg-correct/15 text-correct" },
+    lost: { label: "Lost", cls: "bg-secondary/15 text-secondary" },
+    draw: { label: "Draw", cls: "bg-surface-2 text-muted" },
   };
   const { label, cls } = map[outcome];
   return (
@@ -64,13 +64,13 @@ function GameRow({
   return (
     <Link
       href={href}
-      className="flex items-center justify-between gap-3 rounded-lg bg-neutral-800/70 px-4 py-3 hover:bg-neutral-800 transition-colors"
+      className="flex items-center justify-between gap-3 rounded-xl border border-border bg-surface px-4 py-3 shadow-sm transition-colors hover:bg-primary-soft"
     >
       <div className="flex flex-col gap-0.5 min-w-0">
-        <span className="font-mono text-xs text-neutral-400 truncate">
+        <span className="font-mono text-xs text-muted truncate">
           {truncate(game.gameId)}
         </span>
-        <span className="text-xs text-neutral-500">
+        <span className="text-xs text-faint">
           {game.players.length}/{game.capacity} players
         </span>
       </div>
@@ -148,11 +148,11 @@ export default function PvpHistory() {
   // Stay hidden while the gate resolves (undefined), then show the standard
   // unavailable copy when PvP is off — matching PvpGame's fallback.
   if (pvpEnabled === undefined) {
-    return <p className="text-neutral-400 animate-pulse">Loading…</p>;
+    return <p className="text-muted animate-pulse">Loading…</p>;
   }
   if (!pvpEnabled) {
     return (
-      <div className="text-center text-neutral-400 px-4">
+      <div className="text-center text-muted px-4">
         PvP isn&apos;t available right now. Check back soon.
       </div>
     );
@@ -160,14 +160,14 @@ export default function PvpHistory() {
 
   if (!walletAddress) {
     return (
-      <div className="text-center text-neutral-400 px-4">
+      <div className="text-center text-muted px-4">
         Connect your Circles wallet to see your match history.
       </div>
     );
   }
 
   if (games === null) {
-    return <p className="text-neutral-400 animate-pulse">Loading history…</p>;
+    return <p className="text-muted animate-pulse">Loading history…</p>;
   }
 
   const classified = games.map((g) => ({
@@ -177,7 +177,7 @@ export default function PvpHistory() {
   const visible = classified.filter(({ outcome }) => tabFor(outcome) === tab);
 
   return (
-    <div className="flex flex-col gap-4 w-full max-w-lg mx-auto px-3 text-white">
+    <div className="flex flex-col gap-4 w-full max-w-lg mx-auto px-3">
       <h2 className="text-center text-lg font-bold">Match History</h2>
 
       <div className="flex justify-center gap-1.5">
@@ -189,10 +189,10 @@ export default function PvpHistory() {
             <button
               key={t}
               onClick={() => setTab(t)}
-              className={`px-3 py-1.5 rounded text-sm font-semibold transition-colors ${
+              className={`px-3 py-1.5 rounded-full text-sm font-semibold transition-colors ${
                 tab === t
-                  ? "bg-green-600 text-white"
-                  : "bg-neutral-800 text-neutral-400 hover:text-white"
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "bg-surface-2 text-muted hover:text-foreground"
               }`}
             >
               {TAB_LABELS[t]}
@@ -205,7 +205,7 @@ export default function PvpHistory() {
       </div>
 
       {visible.length === 0 ? (
-        <p className="text-center text-neutral-500 text-sm py-8">
+        <p className="text-center text-faint text-sm py-8">
           No {TAB_LABELS[tab].toLowerCase()} games yet.
         </p>
       ) : (

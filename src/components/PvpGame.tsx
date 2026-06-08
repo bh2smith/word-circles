@@ -519,22 +519,23 @@ export default function PvpGame() {
   // --- Rendering ---------------------------------------------------------
 
   const title = (
-    <h1 className="text-2xl font-bold tracking-wider text-white">
-      PVP CIRCLES
+    <h1 className="text-2xl font-extrabold tracking-tight">
+      <span className="text-secondary">Pvp</span>{" "}
+      <span className="text-primary">Circles</span>
     </h1>
   );
 
   const loadingScreen = (
-    <div className="flex flex-col items-center gap-4 text-white">
+    <div className="flex flex-col items-center gap-4">
       {title}
-      <p className="text-neutral-400">Loading…</p>
+      <p className="text-muted">Loading…</p>
     </div>
   );
 
   const unavailableScreen = (
-    <div className="flex flex-col items-center gap-4 text-white px-4 text-center">
+    <div className="flex flex-col items-center gap-4 px-4 text-center">
       {title}
-      <p className="text-neutral-400">
+      <p className="text-muted">
         PvP isn&apos;t available right now. Check back soon.
       </p>
     </div>
@@ -553,9 +554,9 @@ export default function PvpGame() {
   if (!walletAddress) {
     const standalone = !isMiniappMode();
     return (
-      <div className="flex flex-col items-center gap-4 text-white px-4 text-center">
+      <div className="flex flex-col items-center gap-4 px-4 text-center">
         {title}
-        <p className="text-neutral-400">
+        <p className="text-muted">
           {standalone
             ? "PvP runs inside the Circles app — open Word Circles there to stake and race."
             : "Connect your Circles wallet to play head-to-head."}
@@ -565,7 +566,7 @@ export default function PvpGame() {
             href={CIRCLES_MINIAPP_URL}
             target="_blank"
             rel="noopener noreferrer"
-            className="px-6 py-2.5 rounded-lg bg-green-600 font-bold hover:bg-green-500 transition-colors"
+            className="px-6 py-2.5 rounded-full bg-primary text-primary-foreground font-bold shadow-sm transition hover:opacity-90 active:scale-95"
           >
             Open in Circles
           </a>
@@ -590,10 +591,7 @@ export default function PvpGame() {
   const Header = (
     <div className="flex flex-col items-center gap-1">
       {title}
-      <PlayerProfile
-        address={walletAddress}
-        className="text-neutral-300 text-xs"
-      />
+      <PlayerProfile address={walletAddress} className="text-muted text-xs" />
     </div>
   );
 
@@ -604,28 +602,28 @@ export default function PvpGame() {
     // No lobby the player is a member of — nothing to enter.
     if (!selectedLobby) return unavailableScreen;
     return (
-      <div className="flex flex-col items-center gap-5 text-white px-4 text-center max-w-md">
+      <div className="flex flex-col items-center gap-5 px-4 text-center max-w-md">
         {Header}
         <GroupPicker
           lobbies={visible}
           selected={selectedLobby}
           onSelect={selectLobby}
         />
-        <p className="text-neutral-400">
+        <p className="text-muted">
           Stake {stakeLabel} and race an opponent on the same word. Fewest
           guesses wins the pot.
         </p>
         {!selectedLobby.botFunded && (
           // No bot backstop on this lobby right now — the match relies on a
           // human opponent showing up, which can take a while.
-          <p className="text-sm text-amber-400">
+          <p className="text-sm text-present">
             ⚠️ No bot is covering this lobby right now — it may be a while
             before an opponent joins.
           </p>
         )}
         <button
           onClick={findMatch}
-          className="px-6 py-2.5 rounded-lg bg-green-600 font-bold hover:bg-green-500 transition-colors"
+          className="px-6 py-2.5 rounded-full bg-primary text-primary-foreground font-bold shadow-sm transition hover:opacity-90 active:scale-95"
         >
           Find Match
         </button>
@@ -636,11 +634,9 @@ export default function PvpGame() {
 
   if (phase === "preparing") {
     return (
-      <div className="flex flex-col items-center gap-4 text-white px-4 text-center">
+      <div className="flex flex-col items-center gap-4 px-4 text-center">
         {Header}
-        <p className="text-neutral-400 animate-pulse">
-          Starting your next game…
-        </p>
+        <p className="text-muted animate-pulse">Starting your next game…</p>
         {toast && <Toast message={toast} onDone={() => setToast(null)} />}
       </div>
     );
@@ -648,11 +644,9 @@ export default function PvpGame() {
 
   if (phase === "submitting") {
     return (
-      <div className="flex flex-col items-center gap-4 text-white px-4 text-center">
+      <div className="flex flex-col items-center gap-4 px-4 text-center">
         {Header}
-        <p className="text-neutral-400">
-          Confirm the approve + join in your wallet…
-        </p>
+        <p className="text-muted">Confirm the approve + join in your wallet…</p>
         {toast && <Toast message={toast} onDone={() => setToast(null)} />}
       </div>
     );
@@ -660,9 +654,9 @@ export default function PvpGame() {
 
   if (phase === "discovering") {
     return (
-      <div className="flex flex-col items-center gap-4 text-white px-4 text-center">
+      <div className="flex flex-col items-center gap-4 px-4 text-center">
         {Header}
-        <p className="text-neutral-400 animate-pulse">Finding your game…</p>
+        <p className="text-muted animate-pulse">Finding your game…</p>
         {toast && <Toast message={toast} onDone={() => setToast(null)} />}
       </div>
     );
@@ -672,24 +666,24 @@ export default function PvpGame() {
     const joined = game?.players.length ?? 1;
     const capacity = game?.capacity ?? selectedLobby?.capacity ?? 2;
     return (
-      <div className="flex flex-col items-center gap-4 text-white px-4 text-center max-w-md">
+      <div className="flex flex-col items-center gap-4 px-4 text-center max-w-md">
         {Header}
         <p className="text-lg">Waiting for an opponent…</p>
-        <p className="text-neutral-400">
+        <p className="text-muted">
           {joined}/{capacity} joined
         </p>
         <span className="inline-flex gap-1">
-          <span className="w-2 h-2 bg-green-500 rounded-full animate-bounce [animation-delay:-0.3s]" />
-          <span className="w-2 h-2 bg-green-500 rounded-full animate-bounce [animation-delay:-0.15s]" />
-          <span className="w-2 h-2 bg-green-500 rounded-full animate-bounce" />
+          <span className="w-2 h-2 bg-primary rounded-full animate-bounce [animation-delay:-0.3s]" />
+          <span className="w-2 h-2 bg-primary rounded-full animate-bounce [animation-delay:-0.15s]" />
+          <span className="w-2 h-2 bg-primary rounded-full animate-bounce" />
         </span>
         <button
           onClick={resetToLobby}
-          className="mt-2 px-4 py-2 text-sm font-semibold rounded bg-neutral-700 hover:bg-neutral-600 transition-colors"
+          className="mt-2 px-4 py-2 text-sm font-semibold rounded-full bg-surface-2 border border-border hover:bg-primary-soft transition-colors"
         >
           Stop waiting
         </button>
-        <p className="text-neutral-600 text-xs">
+        <p className="text-faint text-xs">
           Your stake stays escrowed until the game fills and settles (or the
           timeout refund applies). Stopping only hides this screen.
         </p>
@@ -722,24 +716,21 @@ export default function PvpGame() {
     ) ?? null;
 
   return (
-    <div className="relative flex flex-col items-center gap-4 sm:gap-6 w-full max-w-lg mx-auto px-2 text-white">
+    <div className="relative flex flex-col items-center gap-4 sm:gap-6 w-full max-w-lg mx-auto px-2">
       {/* Player on the left, opponent on the right. */}
       <div className="flex w-full items-center justify-between gap-3">
-        <PlayerProfile
-          address={walletAddress}
-          className="text-neutral-300 text-xs"
-        />
+        <PlayerProfile address={walletAddress} className="text-muted text-xs" />
         <OpponentStatus opponent={opponent} settled={settled} />
       </div>
 
       {phase === "playing" && game?.status === "open" && (
-        <div className="w-full max-w-lg rounded-lg bg-neutral-800/80 px-4 py-2 text-center text-sm text-neutral-300">
+        <div className="w-full max-w-lg rounded-xl border border-border bg-surface-2 px-4 py-2 text-center text-sm text-muted">
           <span className="inline-flex items-center gap-2">
             You can start now, opponent will join soon…
             <span className="inline-flex gap-1">
-              <span className="w-2 h-2 bg-green-500 rounded-full animate-bounce [animation-delay:-0.3s]" />
-              <span className="w-2 h-2 bg-green-500 rounded-full animate-bounce [animation-delay:-0.15s]" />
-              <span className="w-2 h-2 bg-green-500 rounded-full animate-bounce" />
+              <span className="w-2 h-2 bg-primary rounded-full animate-bounce [animation-delay:-0.3s]" />
+              <span className="w-2 h-2 bg-primary rounded-full animate-bounce [animation-delay:-0.15s]" />
+              <span className="w-2 h-2 bg-primary rounded-full animate-bounce" />
             </span>
           </span>
         </div>
@@ -752,7 +743,7 @@ export default function PvpGame() {
               <p className="text-lg font-semibold">
                 {solved ? "You solved it!" : "Out of guesses"}
               </p>
-              <p className="text-neutral-400">
+              <p className="text-muted">
                 The word was{" "}
                 <span className="font-bold uppercase tracking-wider">
                   {answer}
@@ -760,7 +751,7 @@ export default function PvpGame() {
               </p>
             </>
           ) : (
-            <p className="text-neutral-400 animate-pulse">
+            <p className="text-muted animate-pulse">
               You finished. Waiting for the result…
             </p>
           )}
@@ -788,7 +779,7 @@ export default function PvpGame() {
         <div className="flex flex-col items-center gap-2">
           <button
             onClick={resetToLobby}
-            className="px-6 py-2.5 rounded-lg bg-green-600 font-bold hover:bg-green-500 transition-colors"
+            className="px-6 py-2.5 rounded-full bg-primary text-primary-foreground font-bold shadow-sm transition hover:opacity-90 active:scale-95"
           >
             Play Again
           </button>
@@ -796,7 +787,7 @@ export default function PvpGame() {
             // You've finished your board; the match is still settling on-chain.
             // Don't make the player wait — let them start a new game now. The
             // old one keeps settling and its result shows up on the history page.
-            <p className="text-neutral-500 text-xs text-center max-w-xs">
+            <p className="text-faint text-xs text-center max-w-xs">
               You can start a new game now — this one finishes settling in the
               background and its result lands in your history.
             </p>

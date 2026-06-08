@@ -26,7 +26,7 @@ export default function HintPanel({
   // Count only — show how many words remain but don't reveal which.
   if (!revealWords) {
     return (
-      <span className="flex items-center gap-2 px-3 py-2 text-sm text-neutral-400">
+      <span className="flex items-center gap-2 px-3 py-2 text-sm text-muted">
         {remaining.length.toLocaleString()} possible word
         {remaining.length !== 1 ? "s" : ""} left
       </span>
@@ -37,7 +37,7 @@ export default function HintPanel({
     <>
       <button
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-2 px-3 py-2 text-sm text-neutral-400 hover:text-white transition-colors"
+        className="flex items-center gap-2 px-3 py-2 text-sm text-muted hover:text-foreground transition-colors"
       >
         <svg
           width="16"
@@ -59,15 +59,15 @@ export default function HintPanel({
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
           <div className="absolute inset-x-0 top-0 bottom-0 z-50 flex items-center justify-center pointer-events-none px-2">
-            <div className="pointer-events-auto w-full max-w-sm max-h-[70%] overflow-y-auto rounded-lg bg-neutral-900/95 border border-neutral-700 shadow-2xl backdrop-blur-sm p-4">
-              <div className="flex items-center justify-between mb-3 sticky top-0 bg-neutral-900/95 pb-2">
-                <span className="text-sm text-neutral-400">
+            <div className="pointer-events-auto w-full max-w-sm max-h-[70%] overflow-y-auto rounded-2xl bg-surface/95 border border-border shadow-2xl backdrop-blur-sm p-4">
+              <div className="flex items-center justify-between mb-3 sticky top-0 bg-surface/95 pb-2">
+                <span className="text-sm text-muted">
                   {remaining.length.toLocaleString()} possible word
                   {remaining.length !== 1 ? "s" : ""}
                 </span>
                 <button
                   onClick={() => setOpen(false)}
-                  className="text-neutral-500 hover:text-white transition-colors p-1"
+                  className="text-faint hover:text-foreground transition-colors p-1"
                 >
                   <svg
                     width="16"
@@ -89,7 +89,7 @@ export default function HintPanel({
                       onSelectWord(w);
                       setOpen(false);
                     }}
-                    className="px-2 py-1 text-xs font-mono rounded bg-neutral-800 text-neutral-300 hover:bg-neutral-700 hover:text-white transition-colors"
+                    className="px-2 py-1 text-xs font-mono rounded-md bg-surface-2 text-muted hover:bg-primary-soft hover:text-foreground transition-colors"
                   >
                     {w}
                   </button>

@@ -24,19 +24,21 @@ function PlayerColumn({
 }) {
   return (
     <div
-      className={`flex flex-col items-center gap-2 rounded-xl p-3 ${
-        highlight ? "ring-2 ring-green-500 bg-green-500/5" : "bg-neutral-800/40"
+      className={`flex flex-col items-center gap-2 rounded-2xl border p-3 ${
+        highlight
+          ? "border-correct ring-2 ring-correct/60 bg-correct/10"
+          : "border-border bg-surface-2/60"
       }`}
     >
       <div className="flex flex-col items-center">
         <p className="font-semibold">{title}</p>
         <PlayerProfile
           address={player.address}
-          className="text-neutral-300 text-xs"
+          className="text-muted text-xs"
         />
       </div>
       <Board guesses={toGuesses(player)} currentGuess="" shake={false} />
-      <p className="text-sm text-neutral-400">
+      <p className="text-sm text-muted">
         {player.solved ? `Solved in ${player.guessCount}` : "Did not solve"}
       </p>
     </div>
@@ -69,12 +71,12 @@ export default function PvpResults({
           : "Results";
 
   return (
-    <div className="flex flex-col items-center gap-5 text-white px-2 w-full max-w-2xl">
+    <div className="flex flex-col items-center gap-5 px-2 w-full max-w-2xl">
       <div className="text-center">
-        <h2 className="text-2xl font-bold">{heading}</h2>
-        <p className="text-neutral-400">
+        <h2 className="text-2xl font-extrabold">{heading}</h2>
+        <p className="text-muted">
           The word was{" "}
-          <span className="font-bold uppercase tracking-wider">
+          <span className="font-bold uppercase tracking-wide text-secondary">
             {transcript.answer}
           </span>
         </p>
@@ -93,7 +95,7 @@ export default function PvpResults({
 
       <button
         onClick={onPlayAgain}
-        className="px-6 py-2.5 rounded-lg bg-green-600 font-bold hover:bg-green-500 transition-colors"
+        className="px-6 py-2.5 rounded-full bg-primary text-primary-foreground font-bold shadow-sm transition hover:opacity-90 active:scale-95"
       >
         Play Again
       </button>

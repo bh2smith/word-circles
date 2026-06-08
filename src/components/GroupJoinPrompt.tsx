@@ -31,7 +31,7 @@ export default function GroupJoinPrompt({ address }: GroupJoinPromptProps) {
 
   if (state === "done") {
     return (
-      <div className="w-full max-w-md rounded-lg bg-neutral-800 px-4 py-3 text-center text-sm text-neutral-200">
+      <div className="w-full max-w-md rounded-xl border border-secondary/30 bg-secondary-soft px-4 py-3 text-center text-sm text-foreground">
         🎉 You&apos;re in <span className="font-semibold">{groupName}</span>!
         PvP unlocks shortly — check the PvP tab in a moment.
       </div>
@@ -45,25 +45,27 @@ export default function GroupJoinPrompt({ address }: GroupJoinPromptProps) {
   };
 
   return (
-    <div className="flex w-full max-w-md flex-col items-center gap-2 rounded-lg bg-neutral-800 px-4 py-3 text-center">
-      <p className="text-sm text-neutral-200">
-        Nice solve! Join <span className="font-semibold">{groupName}</span> to
-        unlock head-to-head <span className="font-semibold">PvP</span> and stake
-        CRC against other players.
+    <div className="flex w-full max-w-md flex-col items-center gap-2 rounded-2xl border border-border bg-surface px-4 py-3 text-center shadow-sm">
+      <p className="text-sm text-muted">
+        Nice solve! Join{" "}
+        <span className="font-semibold text-foreground">{groupName}</span> to
+        unlock head-to-head{" "}
+        <span className="font-semibold text-secondary">PvP</span> and stake CRC
+        against other players.
       </p>
       <button
         onClick={onJoin}
         disabled={state === "joining"}
-        className="rounded-lg bg-green-600 px-5 py-2 text-sm font-bold text-white transition-colors hover:bg-green-500 disabled:opacity-50"
+        className="rounded-full bg-primary px-5 py-2 text-sm font-bold text-primary-foreground shadow-sm transition hover:opacity-90 active:scale-95 disabled:opacity-50"
       >
         {state === "joining" ? "Joining…" : `Join ${groupName}`}
       </button>
       {state === "error" && (
-        <p className="text-xs text-red-400">
+        <p className="text-xs text-secondary">
           Couldn&apos;t join right now — try again later.
         </p>
       )}
-      <p className="text-xs text-neutral-500">
+      <p className="text-xs text-faint">
         You&apos;ll need some personal CRC to stake — claim your daily CRC in
         the Circles app.
       </p>

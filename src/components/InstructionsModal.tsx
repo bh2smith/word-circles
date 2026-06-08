@@ -15,21 +15,19 @@ export default function InstructionsModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-overlay backdrop-blur-sm"
       onClick={onClose}
     >
       <div
-        className="bg-neutral-800 rounded-xl p-6 max-w-sm w-full mx-4 text-white max-h-[85vh] overflow-y-auto"
+        className="bg-surface border border-border shadow-xl rounded-2xl p-6 max-w-sm w-full mx-4 text-foreground max-h-[85vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-center text-lg font-bold mb-4 uppercase tracking-wider">
+        <h2 className="text-center text-lg font-bold mb-4 uppercase tracking-wide">
           How to Play
         </h2>
 
-        <p className="text-sm text-neutral-300 mb-2">
-          Guess the word in 6 tries.
-        </p>
-        <ul className="text-sm text-neutral-300 list-disc list-inside space-y-1 mb-5">
+        <p className="text-sm text-muted mb-2">Guess the word in 6 tries.</p>
+        <ul className="text-sm text-muted list-disc list-inside space-y-1 mb-5">
           <li>Each guess must be a valid 5-letter word.</li>
           <li>The colour of the tiles changes to show how close you are.</li>
         </ul>
@@ -47,7 +45,7 @@ export default function InstructionsModal({
               <Tile letter="n" />
               <Tile letter="e" />
             </div>
-            <p className="text-sm text-neutral-300">
+            <p className="text-sm text-muted">
               <span className="font-bold uppercase">C</span> is in the word and
               in the correct spot.
             </p>
@@ -61,7 +59,7 @@ export default function InstructionsModal({
               <Tile letter="s" />
               <Tile letter="e" />
             </div>
-            <p className="text-sm text-neutral-300">
+            <p className="text-sm text-muted">
               <span className="font-bold uppercase">O</span> is in the word but
               in the wrong spot.
             </p>
@@ -75,7 +73,7 @@ export default function InstructionsModal({
               <Tile letter="l" />
               <Tile letter="e" />
             </div>
-            <p className="text-sm text-neutral-300">
+            <p className="text-sm text-muted">
               <span className="font-bold uppercase">B</span> is not in the word
               in any spot.
             </p>
@@ -84,7 +82,7 @@ export default function InstructionsModal({
 
         <button
           onClick={onClose}
-          className="mt-6 w-full py-2 rounded font-bold bg-green-600 hover:bg-green-700 transition-colors"
+          className="mt-6 w-full py-2.5 rounded-full font-bold bg-primary text-primary-foreground transition hover:opacity-90 active:scale-[0.98]"
         >
           Got it
         </button>

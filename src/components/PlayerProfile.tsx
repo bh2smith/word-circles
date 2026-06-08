@@ -73,7 +73,7 @@ export default function PlayerProfile({
           className={`${dim} rounded-full shrink-0 object-cover`}
         />
       ) : (
-        <div className={`${dim} rounded-full bg-neutral-600 shrink-0`} />
+        <div className={`${dim} rounded-full bg-surface-2 shrink-0`} />
       )}
       <span className="truncate">{label}</span>
     </>
@@ -92,7 +92,7 @@ export default function PlayerProfile({
       href={circlesProfileUrl(address)}
       target="_blank"
       rel="noopener noreferrer"
-      className={`inline-flex items-center gap-2 min-w-0 hover:text-green-400 transition-colors ${className}`}
+      className={`inline-flex items-center gap-2 min-w-0 hover:text-primary transition-colors ${className}`}
     >
       {inner}
     </a>

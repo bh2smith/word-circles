@@ -45,12 +45,12 @@ export default function ConnectAccount({
       <button
         onClick={onClick}
         disabled={connecting}
-        className="px-6 py-2.5 rounded-lg bg-green-600 font-bold text-white hover:bg-green-500 transition-colors disabled:opacity-60"
+        className="px-6 py-2.5 rounded-full bg-primary font-bold text-primary-foreground shadow-sm transition hover:opacity-90 active:scale-95 disabled:opacity-60"
       >
         {connecting ? "Connecting…" : label}
       </button>
       {error && (
-        <p role="alert" className="text-sm text-red-400 text-center">
+        <p role="alert" className="text-sm text-secondary text-center">
           {error}
         </p>
       )}

@@ -1,23 +1,140 @@
 @import "tailwindcss";
 
+/* ============================================================
+   Circles design tokens
+   Semantic variables flip automatically on prefers-color-scheme.
+   Brand: indigo #38318B + coral #DF6552, DM Sans, rounded/friendly.
+   ============================================================ */
 :root {
-  --background: #121213;
-  --foreground: #ffffff;
+  /* surfaces */
+  --background: #f2f1fb; /* soft indigo-tinted page */
+  --surface: #ffffff; /* cards, modals, board chrome */
+  --surface-2: #ecebf8; /* subtle raised: empty tiles, idle keys */
+  --overlay: rgba(20, 17, 46, 0.45);
+
+  /* text */
+  --foreground: #1a1830;
+  --muted: #5b5775;
+  --faint: #918dac;
+
+  /* lines */
+  --border: #e3e1f1;
+  --border-strong: #cdcae3;
+
+  /* brand */
+  --primary: #38318b; /* Circles indigo */
+  --primary-foreground: #ffffff;
+  --primary-soft: #e7e4f6; /* tinted hover / selected */
+  --secondary: #df6552; /* Circles coral */
+  --secondary-foreground: #ffffff;
+  --secondary-soft: #fbe7e2;
+
+  /* tile / key states (Wordle feedback kept legible in both themes) */
+  --correct: #3a9d6b;
+  --present: #d99a3c;
+  --absent: #a8a4c1;
+  --state-foreground: #ffffff;
+  --tile-empty: #d4d1e7; /* empty tile border */
+  --tile-filled: #9b96c0; /* typed-but-unsubmitted tile border */
+  --key-idle: #c9c5df; /* unused key background */
+  --key-idle-foreground: #1a1830;
+
+  --ring: #38318b;
+  color-scheme: light;
 }
 
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* surfaces — indigo-tinted dark, never flat neutral */
+    --background: #0c0a1d;
+    --surface: #161334;
+    --surface-2: #211d44;
+    --overlay: rgba(3, 2, 10, 0.62);
+
+    --foreground: #ecebf6;
+    --muted: #a8a4c8;
+    --faint: #6f6b91;
+
+    --border: #2a2656;
+    --border-strong: #3a356b;
+
+    --primary: #8d84ec; /* brightened indigo reads on dark */
+    --primary-foreground: #14112e;
+    --primary-soft: #251f49;
+    --secondary: #f0795f;
+    --secondary-foreground: #1f0e09;
+    --secondary-soft: #38201a;
+
+    --correct: #4cb583;
+    --present: #e0a23a;
+    --absent: #4a4670;
+    --state-foreground: #ffffff;
+    --tile-empty: #322e5a;
+    --tile-filled: #565081;
+    --key-idle: #3a3664;
+    --key-idle-foreground: #ecebf6;
+
+    --ring: #8d84ec;
+    color-scheme: dark;
+  }
+}
+
+/* Expose tokens as Tailwind color/font utilities (bg-surface, text-primary…) */
 @theme inline {
   --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-overlay: var(--overlay);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-soft: var(--primary-soft);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary-soft: var(--secondary-soft);
+  --color-correct: var(--correct);
+  --color-present: var(--present);
+  --color-absent: var(--absent);
+  --color-state-foreground: var(--state-foreground);
+  --color-tile-empty: var(--tile-empty);
+  --color-tile-filled: var(--tile-filled);
+  --color-key-idle: var(--key-idle);
+  --color-key-idle-foreground: var(--key-idle-foreground);
+
+  --font-sans: var(--font-dm-sans), ui-sans-serif, system-ui, sans-serif;
 }
 
 body {
-  background: var(--background);
+  background-color: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-dm-sans), ui-sans-serif, system-ui, sans-serif;
 }
 
+/* Atmospheric concentric-circle wash — the "Circles" motif, kept subtle. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      circle at 50% -10%,
+      color-mix(in srgb, var(--primary) 16%, transparent),
+      transparent 55%
+    ),
+    radial-gradient(
+      circle at 100% 100%,
+      color-mix(in srgb, var(--secondary) 12%, transparent),
+      transparent 45%
+    );
+}
+
+/* ============================ motion ============================ */
 @keyframes shake {
   0%,
   100% {
@@ -49,10 +166,37 @@ body {
   }
 }
 
+@keyframes pop-in {
+  0% {
+    transform: scale(0.9);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.04);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
 @utility animate-shake {
   animation: shake 0.5s ease-in-out;
 }
 
 @utility animate-fade-in {
   animation: fade-in 0.2s ease-out;
+}
+
+@utility animate-pop-in {
+  animation: pop-in 0.28s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }

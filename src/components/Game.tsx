@@ -319,9 +319,9 @@ export default function Game() {
 
   if (gameId === null) {
     return (
-      <div className="flex flex-col items-center justify-center h-screen text-white gap-4">
-        <h1 className="text-2xl font-bold tracking-wider">WORD CIRCLES</h1>
-        <p className="text-neutral-400">Loading...</p>
+      <div className="flex flex-col items-center justify-center h-screen gap-4">
+        <Wordmark />
+        <p className="text-muted">Loading…</p>
       </div>
     );
   }
@@ -332,9 +332,9 @@ export default function Game() {
   if (!walletAddress) {
     const standalone = !isMiniappMode();
     return (
-      <div className="flex flex-col items-center gap-5 w-full max-w-md mx-auto px-4 text-white">
-        <h1 className="text-2xl font-bold tracking-wider">WORD CIRCLES</h1>
-        <p className="text-neutral-400 text-center">
+      <div className="flex flex-col items-center gap-5 w-full max-w-md mx-auto px-4">
+        <Wordmark />
+        <p className="text-muted text-center">
           {standalone
             ? "Word Circles runs as a mini-app inside the Circles app."
             : "Connect your Circles wallet to play today's word."}
@@ -344,15 +344,15 @@ export default function Game() {
             href={CIRCLES_MINIAPP_URL}
             target="_blank"
             rel="noopener noreferrer"
-            className="px-6 py-2.5 rounded-lg bg-green-600 font-bold hover:bg-green-500 transition-colors"
+            className="px-6 py-2.5 rounded-full bg-primary text-primary-foreground font-bold shadow-sm transition hover:opacity-90 active:scale-95"
           >
             Open in Circles
           </a>
         ) : (
           <ConnectAccount />
         )}
-        <div className="w-full bg-neutral-800 rounded-xl p-6 max-h-[70vh] flex flex-col">
-          <h2 className="text-center text-lg font-bold mb-4 uppercase tracking-wider">
+        <div className="w-full bg-surface border border-border rounded-2xl p-6 max-h-[70vh] flex flex-col shadow-sm">
+          <h2 className="text-center text-lg font-bold mb-4 uppercase tracking-wide text-muted">
             Leaderboard
           </h2>
           <LeaderboardPanel gameId={gameId} />
@@ -363,25 +363,25 @@ export default function Game() {
 
   if (alreadyPlayed === null) {
     return (
-      <div className="flex flex-col items-center justify-center h-screen text-white gap-4">
-        <h1 className="text-2xl font-bold tracking-wider">WORD CIRCLES</h1>
-        <p className="text-neutral-400">Checking game status...</p>
+      <div className="flex flex-col items-center justify-center h-screen gap-4">
+        <Wordmark />
+        <p className="text-muted">Checking game status…</p>
       </div>
     );
   }
 
   if (alreadyPlayed && status === "playing") {
     return (
-      <div className="flex flex-col items-center justify-center h-screen text-white gap-4">
-        <h1 className="text-2xl font-bold tracking-wider">WORD CIRCLES</h1>
-        <p className="text-neutral-400">Game #{gameId}</p>
-        <p className="text-lg">You&apos;ve already played today!</p>
-        <p className="text-neutral-500 text-sm">
-          Come back tomorrow for a new word.
+      <div className="flex flex-col items-center justify-center h-screen gap-3">
+        <Wordmark />
+        <p className="text-muted text-sm">Game #{gameId}</p>
+        <p className="text-lg font-semibold">
+          You&apos;ve already played today!
         </p>
+        <p className="text-faint text-sm">Come back tomorrow for a new word.</p>
         <button
           onClick={() => setShowLeaderboard(true)}
-          className="mt-2 px-4 py-2 text-sm font-semibold rounded bg-green-600 text-white hover:bg-green-500 transition-colors"
+          className="mt-2 px-5 py-2 text-sm font-semibold rounded-full bg-primary text-primary-foreground shadow-sm transition hover:opacity-90 active:scale-95"
         >
           View Leaderboard
         </button>
@@ -400,7 +400,7 @@ export default function Game() {
       <div className="flex items-center justify-between w-full">
         <button
           onClick={() => setShowLeaderboard(true)}
-          className="w-10 h-10 flex items-center justify-center text-white hover:bg-neutral-700 rounded transition-colors"
+          className="w-10 h-10 flex items-center justify-center text-muted hover:text-foreground hover:bg-primary-soft rounded-full transition-colors"
           aria-label="Leaderboard"
         >
           <svg
@@ -420,7 +420,7 @@ export default function Game() {
         <div className="flex items-center gap-1">
           <button
             onClick={() => setShowInstructions(true)}
-            className="w-10 h-10 flex items-center justify-center text-white hover:bg-neutral-700 rounded transition-colors"
+            className="w-10 h-10 flex items-center justify-center text-muted hover:text-foreground hover:bg-primary-soft rounded-full transition-colors"
             aria-label="How to play"
           >
             <svg
@@ -442,7 +442,7 @@ export default function Game() {
           </button>
           <button
             onClick={() => setShowStats(true)}
-            className="w-10 h-10 flex items-center justify-center text-white hover:bg-neutral-700 rounded transition-colors"
+            className="w-10 h-10 flex items-center justify-center text-muted hover:text-foreground hover:bg-primary-soft rounded-full transition-colors"
             aria-label="Statistics"
           >
             <svg
@@ -462,7 +462,7 @@ export default function Game() {
       </div>
 
       {/* Game number */}
-      <p className="text-neutral-400 text-sm">Game #{gameId}</p>
+      <p className="text-muted text-sm font-medium">Game #{gameId}</p>
 
       {/* Greet newcomers who arrived via an invite link (renders nothing
           otherwise). */}
@@ -526,6 +526,38 @@ export default function Game() {
         open={showInstructions}
         onClose={() => setShowInstructions(false)}
       />
+    </div>
+  );
+}
+
+// Two-tone wordmark with the concentric-circles brand glyph. Colors are wired
+// to the theme tokens so it flips with light/dark automatically.
+function Wordmark() {
+  return (
+    <div className="flex items-center gap-2.5">
+      <svg width="30" height="30" viewBox="0 0 30 30" aria-hidden="true">
+        <circle
+          cx="15"
+          cy="15"
+          r="13"
+          fill="none"
+          stroke="var(--primary)"
+          strokeWidth="2.5"
+        />
+        <circle
+          cx="15"
+          cy="15"
+          r="7.5"
+          fill="none"
+          stroke="var(--secondary)"
+          strokeWidth="2.5"
+        />
+        <circle cx="15" cy="15" r="2.5" fill="var(--primary)" />
+      </svg>
+      <h1 className="text-2xl font-extrabold tracking-tight">
+        <span className="text-primary">Word</span>{" "}
+        <span className="text-secondary">Circles</span>
+      </h1>
     </div>
   );
 }

@@ -28,13 +28,13 @@ function GroupAvatar({
       <img
         src={profile.previewImageUrl}
         alt=""
-        className="w-6 h-6 rounded-full object-cover bg-neutral-700"
+        className="w-6 h-6 rounded-full object-cover bg-surface-2"
       />
     );
   }
   // Fallback: first letter of the group name on a neutral disc.
   return (
-    <span className="flex w-6 h-6 items-center justify-center rounded-full bg-neutral-700 text-xs font-bold uppercase">
+    <span className="flex w-6 h-6 items-center justify-center rounded-full bg-primary-soft text-primary text-xs font-bold uppercase">
       {name.charAt(0)}
     </span>
   );
@@ -87,12 +87,14 @@ export default function GroupPicker({
   if (lobbies.length === 1) {
     const l = lobbies[0];
     return (
-      <div className="flex items-center gap-2 rounded-lg bg-neutral-800 px-4 py-2">
+      <div className="flex items-center gap-2 rounded-full border border-border bg-surface px-4 py-2">
         <GroupAvatar
           profile={profiles.get(l.group.toLowerCase())}
           name={l.name}
         />
-        <span className="text-sm font-semibold text-white">{nameFor(l)}</span>
+        <span className="text-sm font-semibold text-foreground">
+          {nameFor(l)}
+        </span>
       </div>
     );
   }
@@ -104,21 +106,21 @@ export default function GroupPicker({
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center justify-between gap-2 rounded-lg bg-neutral-800 px-4 py-2 hover:bg-neutral-700 transition-colors"
+        className="flex w-full items-center justify-between gap-2 rounded-full border border-border bg-surface px-4 py-2 hover:bg-primary-soft transition-colors"
       >
         <span className="flex items-center gap-2">
           <GroupAvatar
             profile={profiles.get(current.group.toLowerCase())}
             name={current.name}
           />
-          <span className="text-sm font-semibold text-white">
+          <span className="text-sm font-semibold text-foreground">
             {nameFor(current)}
           </span>
         </span>
-        <span className="text-neutral-400 text-xs">{open ? "▲" : "▼"}</span>
+        <span className="text-muted text-xs">{open ? "▲" : "▼"}</span>
       </button>
       {open && (
-        <ul className="absolute z-10 mt-1 w-full overflow-hidden rounded-lg border border-neutral-700 bg-neutral-800 shadow-lg">
+        <ul className="absolute z-10 mt-1 w-full overflow-hidden rounded-xl border border-border bg-surface shadow-xl">
           {lobbies.map((l) => {
             const isSelected = l.token === current.token;
             return (
@@ -129,8 +131,10 @@ export default function GroupPicker({
                     onSelect(l);
                     setOpen(false);
                   }}
-                  className={`flex w-full items-center gap-2 px-4 py-2 text-left text-sm transition-colors hover:bg-neutral-700 ${
-                    isSelected ? "text-green-400" : "text-white"
+                  className={`flex w-full items-center gap-2 px-4 py-2 text-left text-sm transition-colors hover:bg-primary-soft ${
+                    isSelected
+                      ? "text-primary font-semibold"
+                      : "text-foreground"
                   }`}
                 >
                   <GroupAvatar

@@ -30,7 +30,7 @@ export default function InviteWelcome() {
   if (!name) return null;
 
   return (
-    <div className="w-full max-w-md rounded-lg bg-green-900/40 px-4 py-3 text-center text-sm text-green-100">
+    <div className="w-full max-w-md rounded-xl border border-secondary/30 bg-secondary-soft px-4 py-3 text-center text-sm text-foreground">
       🎉 <span className="font-semibold">{name}</span> invited you to Word
       Circles — solve today&apos;s word to challenge them!
     </div>

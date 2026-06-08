@@ -39,7 +39,7 @@ export default function InviteFriend({
   return (
     <button
       onClick={onShare}
-      className={`rounded-lg bg-neutral-700 px-5 py-2 text-sm font-bold text-white transition-colors hover:bg-neutral-600 ${className ?? ""}`}
+      className={`rounded-full border border-border bg-surface px-5 py-2 text-sm font-bold text-foreground shadow-sm transition hover:bg-primary-soft active:scale-95 ${className ?? ""}`}
     >
       {label}
     </button>
