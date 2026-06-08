@@ -520,7 +520,7 @@ export default function PvpGame() {
 
   const title = (
     <h1 className="text-2xl font-extrabold tracking-tight">
-      <span className="text-secondary">Pvp</span>{" "}
+      <span className="text-secondary">PvP</span>{" "}
       <span className="text-primary">Circles</span>
     </h1>
   );
