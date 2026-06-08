@@ -164,6 +164,10 @@ function PlayerCell({
         className="flex items-center gap-2 min-w-0 hover:text-green-400 transition-colors"
       >
         {profile?.previewImageUrl ? (
+          // Circles preview avatar from an arbitrary host/data URL; next/image
+          // adds remotePatterns config + optimization cost with no benefit at
+          // this size, so plain <img> is intentional.
+          // eslint-disable-next-line @next/next/no-img-element
           <img
             src={profile.previewImageUrl}
             alt=""

@@ -21,6 +21,10 @@ function GroupAvatar({
 }) {
   if (profile?.previewImageUrl) {
     return (
+      // Circles profile preview avatar: a tiny image from an arbitrary
+      // host/data URL. next/image would need wildcard remotePatterns and adds
+      // optimization cost with no benefit at this size, so plain <img> is right.
+      // eslint-disable-next-line @next/next/no-img-element
       <img
         src={profile.previewImageUrl}
         alt=""
