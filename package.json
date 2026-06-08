@@ -14,24 +14,24 @@
     "test": "bun test"
   },
   "dependencies": {
-    "@aboutcircles/miniapp-sdk": "^0.1.43",
-    "next": "16.2.6",
+    "@aboutcircles/miniapp-sdk": "^0.1.44",
+    "next": "^16.2.7",
     "openapi-fetch": "^0.17.0",
-    "react": "19.2.4",
-    "react-dom": "19.2.4",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
     "server-only": "^0.0.1",
-    "viem": "^2.51.3"
+    "viem": "^2.52.2"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.0",
-    "@types/node": "^20.19.41",
-    "@types/react": "^19.2.15",
+    "@types/node": "^25.9.2",
+    "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "eslint": "^9.39.4",
-    "eslint-config-next": "16.2.6",
+    "eslint-config-next": "^16.2.7",
     "openapi-typescript": "^7.13.0",
     "prettier": "^3.8.3",
     "tailwindcss": "^4.3.0",
-    "typescript": "^5.9.3"
+    "typescript": "^6.0.3"
   }
 }
