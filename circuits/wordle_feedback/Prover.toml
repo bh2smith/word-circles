@@ -1,0 +1,9 @@
+# Sample inputs for `nargo execute`.
+# secret "react" (private), guess "crane" (public) -> feedback packed = 293 (0x125).
+# Letter encoding a..z -> 0..25.  salt is a private Field.
+# commitment = poseidon2([react.., salt]) — recompute via:
+#   nargo test print_sample_commitment --show-output
+secret = ["17", "4", "0", "2", "19"]
+salt = "123456789"
+commitment = "0x1f7a0ec0831a06e6c5a30f6ec2ae1d99b3bea5634321c2450e712f98514713ca"
+guess = ["2", "17", "0", "13", "4"]

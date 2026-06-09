@@ -32,5 +32,5 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules", "test-preload.ts", "**/*.test.ts"]
+  "exclude": ["node_modules", "circuits", "test-preload.ts", "**/*.test.ts"]
 }

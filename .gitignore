@@ -27,6 +27,10 @@
 # rust
 /backend/target/
 
+# noir / barretenberg (zk circuits)
+/circuits/target/
+/circuits/node_modules/
+
 # dappnode build artifacts
 /deployment/build_*/
 
