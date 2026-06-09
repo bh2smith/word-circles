@@ -32,11 +32,11 @@
   /* tile / key states (Wordle feedback kept legible in both themes) */
   --correct: #3a9d6b;
   --present: #d99a3c;
-  --absent: #a8a4c1;
+  --absent: #79759a; /* eliminated: clearly darker/recessed vs idle */
   --state-foreground: #ffffff;
   --tile-empty: #d4d1e7; /* empty tile border */
   --tile-filled: #9b96c0; /* typed-but-unsubmitted tile border */
-  --key-idle: #c9c5df; /* unused key background */
+  --key-idle: #d3cfe6; /* unused key background — lighter, raised */
   --key-idle-foreground: #1a1830;
 
   --ring: #38318b;
@@ -67,11 +67,11 @@
 
     --correct: #4cb583;
     --present: #e0a23a;
-    --absent: #4a4670;
+    --absent: #211d40; /* eliminated: sinks toward bg, darker than idle */
     --state-foreground: #ffffff;
     --tile-empty: #322e5a;
     --tile-filled: #565081;
-    --key-idle: #3a3664;
+    --key-idle: #4f4a82; /* unused key background — clearly raised vs absent */
     --key-idle-foreground: #ecebf6;
 
     --ring: #8d84ec;
