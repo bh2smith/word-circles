@@ -24,13 +24,30 @@ const circuit = JSON.parse(
   readFileSync(join(here, "../target/wordle_feedback.json"), "utf8"),
 );
 
-// Mirrors wordle_feedback/Prover.toml.
+// Mirrors wordle_feedback/Prover.toml (secret "react", guess "crane").
 const inputs = {
   secret: ["17", "4", "0", "2", "19"], // "react" (private)
   salt: "123456789",
+  leaf_index: "1551",
   commitment:
     "0x1f7a0ec0831a06e6c5a30f6ec2ae1d99b3bea5634321c2450e712f98514713ca",
+  dictionary_root:
+    "0x0984b03ac65fe9e4710ce7fb30f53d292b0d03f812b247ef32764d6018655f87",
   guess: ["2", "17", "0", "13", "4"], // "crane" (public)
+  merkle_path: [
+    "0x045bd9ed3ac414de0d5fac24eb9b9c7fbee04989a18709d7685ba8e5c5b936e0",
+    "0x19e04053a5d447fe2a0dfa778cd902dd355e2392b83b5fd7952b986d414ca7a0",
+    "0x2b78a6bcdc68cf0a3b5f3b607be96927d81d4109500cd54d1c0ab47b80d25f83",
+    "0x053ef0fdb4111cbf733469814de278e2c7816e905615bf3b639611cf4cf9d149",
+    "0x2a04b3a24e9af138064e1630c91e9481a09d10e719eb9760defd82aec29ecaf2",
+    "0x0506a795dd5d819a37eb05d0868e50f3f6a0253b771b9549b4ef3c5db15b13c3",
+    "0x1669a20353f0501600beee0d17dc87d56f13a6c8a634e7262bd831b7b27a5d35",
+    "0x1b20a170777fb18bc22dea8c05b453c2d19763097fe9d890cd120c6c75acb1b4",
+    "0x09edc957d5a2fd79a3924a1e4843314211dc3f1929f73f2dead2756a7cdfac50",
+    "0x020a825390af1ce1faf69ca0c853472ea5f5381c720c739907c93cf99e8f4d33",
+    "0x0f105f1934d2274e6b0309e9eb601c2b027883e8119b8a1e31fbe4593f92a8f8",
+    "0x19b6aa7756aef2920b328ec711d5f70387119a6c19dea97aea24b5b1a0f50286",
+  ],
 };
 
 const THREADS = Number(process.env.BB_THREADS ?? "1");

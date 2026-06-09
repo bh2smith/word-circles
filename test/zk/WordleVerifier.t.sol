@@ -12,15 +12,17 @@ import {HonkVerifier} from "../../contracts/zk/WordleVerifier.sol";
 ///         `forge build --sizes` (EIP-170 limit = 24576 bytes).
 ///
 ///         Artifacts (regenerate with the commands in circuits/README.md):
-///           circuits/target/proof          — 6464-byte UltraHonk (ZK, evm) proof
-///           circuits/target/public_inputs  — 7 x 32-byte words:
-///                                            [commitment, guess[0..5], feedback]
+///           circuits/target/proof          — UltraHonk (ZK, evm) proof
+///           circuits/target/public_inputs  — 8 x 32-byte words:
+///                              [commitment, dictionary_root, guess[0..5], feedback]
 contract WordleVerifierTest is Test {
     HonkVerifier internal verifier;
 
     // Number of *circuit* public inputs (the 8 pairing-point limbs live inside
     // the proof, not in this array).
-    uint256 internal constant NUM_PUBLIC_INPUTS = 7;
+    uint256 internal constant NUM_PUBLIC_INPUTS = 8;
+    // Index of the packed feedback within the public inputs.
+    uint256 internal constant FEEDBACK_INDEX = 7;
 
     string internal constant PROOF_PATH = "circuits/target/proof";
     string internal constant PUBLIC_INPUTS_PATH = "circuits/target/public_inputs";
@@ -50,16 +52,17 @@ contract WordleVerifierTest is Test {
         assertTrue(verifier.verify(proof, publicInputs), "valid proof should verify");
     }
 
-    /// Sanity: the public inputs are the values we expect from Prover.toml
-    /// (guess "crane" -> 2,17,0,13,4 ; feedback packed = 293 = 0x125).
+    /// Sanity: the public inputs are the values we expect from Prover.toml.
+    /// Layout: [commitment, dictionary_root, guess[0..5], feedback].
+    /// guess "crane" -> 2,17,0,13,4 ; feedback packed = 293 = 0x125.
     function test_publicInputsMatchExpected() public view {
         bytes32[] memory pi = _loadPublicInputs();
-        assertEq(uint256(pi[1]), 2, "guess[0]=c");
-        assertEq(uint256(pi[2]), 17, "guess[1]=r");
-        assertEq(uint256(pi[3]), 0, "guess[2]=a");
-        assertEq(uint256(pi[4]), 13, "guess[3]=n");
-        assertEq(uint256(pi[5]), 4, "guess[4]=e");
-        assertEq(uint256(pi[6]), 293, "feedback packed");
+        assertEq(uint256(pi[2]), 2, "guess[0]=c");
+        assertEq(uint256(pi[3]), 17, "guess[1]=r");
+        assertEq(uint256(pi[4]), 0, "guess[2]=a");
+        assertEq(uint256(pi[5]), 13, "guess[3]=n");
+        assertEq(uint256(pi[6]), 4, "guess[4]=e");
+        assertEq(uint256(pi[FEEDBACK_INDEX]), 293, "feedback packed");
     }
 
     /// Tampering with a public input (claiming a different feedback) must fail.
@@ -67,7 +70,7 @@ contract WordleVerifierTest is Test {
     function test_tamperedFeedbackRejected() public view {
         bytes memory proof = vm.readFileBinary(PROOF_PATH);
         bytes32[] memory publicInputs = _loadPublicInputs();
-        publicInputs[6] = bytes32(uint256(294)); // claim feedback 294 instead of 293
+        publicInputs[FEEDBACK_INDEX] = bytes32(uint256(294)); // claim 294 instead of 293
 
         try verifier.verify(proof, publicInputs) returns (bool ok) {
             assertFalse(ok, "tampered feedback must not verify");
