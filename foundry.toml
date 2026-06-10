@@ -4,8 +4,8 @@ out = "out"
 libs = ["node_modules", "lib"]
 optimizer = true
 optimizer_runs = 200
-# Allow the ZK verifier test to read bb-generated proof artifacts.
-fs_permissions = [{ access = "read", path = "./circuits/target" }]
+# Allow the ZK verifier test to read its committed proof fixtures.
+fs_permissions = [{ access = "read", path = "./test/zk/fixtures" }]
 
 [fmt]
 # WordleVerifier.sol is generated verbatim by `bb write_solidity_verifier`;

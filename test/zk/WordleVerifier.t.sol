@@ -11,9 +11,11 @@ import {HonkVerifier} from "../../contracts/zk/WordleVerifier.sol";
 ///         gas report (`forge test --gas-report`) and bytecode size via
 ///         `forge build --sizes` (EIP-170 limit = 24576 bytes).
 ///
-///         Artifacts (regenerate with the commands in circuits/README.md):
-///           circuits/target/proof          — UltraHonk (ZK, evm) proof
-///           circuits/target/public_inputs  — 8 x 32-byte words:
+///         Artifacts are committed fixtures (so CI, which has no ZK toolchain,
+///         can run this). They are a matched pair with the committed verifier;
+///         regenerate both together via the commands in circuits/README.md.
+///           test/zk/fixtures/proof          — UltraHonk (ZK, evm) proof
+///           test/zk/fixtures/public_inputs  — 8 x 32-byte words:
 ///                              [commitment, dictionary_root, guess[0..5], feedback]
 contract WordleVerifierTest is Test {
     HonkVerifier internal verifier;
@@ -24,8 +26,8 @@ contract WordleVerifierTest is Test {
     // Index of the packed feedback within the public inputs.
     uint256 internal constant FEEDBACK_INDEX = 7;
 
-    string internal constant PROOF_PATH = "circuits/target/proof";
-    string internal constant PUBLIC_INPUTS_PATH = "circuits/target/public_inputs";
+    string internal constant PROOF_PATH = "test/zk/fixtures/proof";
+    string internal constant PUBLIC_INPUTS_PATH = "test/zk/fixtures/public_inputs";
 
     function setUp() public {
         verifier = new HonkVerifier();

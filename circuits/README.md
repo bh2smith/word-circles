@@ -72,6 +72,10 @@ bb prove -b target/wordle_feedback.json -w target/wordle_feedback.gz -o target/ 
 bb verify -k target/vk -p target/proof -i target/public_inputs -t evm
 bb write_solidity_verifier -k target/vk -o ../contracts/zk/WordleVerifier.sol
 
+# Commit the proof + public inputs as test fixtures (CI has no ZK toolchain, so
+# the Foundry test reads these checked-in vectors — keep them matched to the verifier):
+cp target/proof target/public_inputs ../test/zk/fixtures/
+
 # Solidity end-to-end (from repo root):
 forge test --match-path "test/zk/WordleVerifier.t.sol" --gas-report
 forge build --sizes        # HonkVerifier runtime size vs EIP-170 (24576)
