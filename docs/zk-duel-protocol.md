@@ -129,9 +129,23 @@ the opponent forfeits; if **nobody solves**, it's a draw and stakes are refunded
 
 The greens/oranges tiebreak applies **only** to disambiguate two solvers on equal
 guess counts (case 2); when nobody solved we refund rather than crown a winner on
-partial tallies. **No rake in v1** — pure pot redistribution. All payouts via
-`SafeERC20.safeTransfer`, `nonReentrant`, `status=Settled` written **before**
-transfers (CEI), as in `WordCirclesEscrow.resolve`.
+partial tallies. **No rake in v1** — pure pot redistribution. (Note: with equal
+stakes, "split" and "refund each" are identical — each gets `stake` back — so the
+contract has just three outcomes: A wins pot, B wins pot, or each reclaims stake.)
+
+**Pull payments.** `settle`/`claimTimeout` are permissionless and a draw pays both
+players, so settlement must not push funds (a reverting recipient — common with
+Safe smart wallets — could lock the pot). Instead they credit
+`withdrawable[player] += amount` and flip `status=Settled`; each player then calls
+`withdraw()` (`nonReentrant`, `SafeERC20.safeTransfer`, CEI). This removes the
+DoS surface and keeps settlement reentrancy-trivial.
+
+**Liveness note (refines the spec's "no guesser timeout").** A guesser who simply
+stops (no pending guess) must still let the pot settle, so each track also carries
+a **guesser deadline** (same `MOVE_TIMEOUT`). Missing it has **no penalty** — the
+track just freezes at current progress (stalling never helps). Only the _owner_
+missing a pending-feedback deadline is a forfeit (loses the pot). One `deadline`
+field + the `pendingGuess` flag distinguishes whose clock is running.
 
 ## 5. Threat model
 
