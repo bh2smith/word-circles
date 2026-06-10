@@ -15,16 +15,16 @@ import {HonkVerifier} from "../../contracts/zk/WordleVerifier.sol";
 ///         can run this). They are a matched pair with the committed verifier;
 ///         regenerate both together via the commands in circuits/README.md.
 ///           test/zk/fixtures/proof          — UltraHonk (ZK, evm) proof
-///           test/zk/fixtures/public_inputs  — 8 x 32-byte words:
-///                              [commitment, dictionary_root, guess[0..5], feedback]
+///           test/zk/fixtures/public_inputs  — 9 x 32-byte words:
+///                  [commitment, dictionary_root, match_binding, guess[0..5], feedback]
 contract WordleVerifierTest is Test {
     HonkVerifier internal verifier;
 
     // Number of *circuit* public inputs (the 8 pairing-point limbs live inside
     // the proof, not in this array).
-    uint256 internal constant NUM_PUBLIC_INPUTS = 8;
+    uint256 internal constant NUM_PUBLIC_INPUTS = 9;
     // Index of the packed feedback within the public inputs.
-    uint256 internal constant FEEDBACK_INDEX = 7;
+    uint256 internal constant FEEDBACK_INDEX = 8;
 
     string internal constant PROOF_PATH = "test/zk/fixtures/proof";
     string internal constant PUBLIC_INPUTS_PATH = "test/zk/fixtures/public_inputs";
@@ -55,15 +55,16 @@ contract WordleVerifierTest is Test {
     }
 
     /// Sanity: the public inputs are the values we expect from Prover.toml.
-    /// Layout: [commitment, dictionary_root, guess[0..5], feedback].
+    /// Layout: [commitment, dictionary_root, match_binding, guess[0..5], feedback].
     /// guess "crane" -> 2,17,0,13,4 ; feedback packed = 293 = 0x125.
     function test_publicInputsMatchExpected() public view {
         bytes32[] memory pi = _loadPublicInputs();
-        assertEq(uint256(pi[2]), 2, "guess[0]=c");
-        assertEq(uint256(pi[3]), 17, "guess[1]=r");
-        assertEq(uint256(pi[4]), 0, "guess[2]=a");
-        assertEq(uint256(pi[5]), 13, "guess[3]=n");
-        assertEq(uint256(pi[6]), 4, "guess[4]=e");
+        assertEq(uint256(pi[2]), 0x1234567890abcdef, "match_binding");
+        assertEq(uint256(pi[3]), 2, "guess[0]=c");
+        assertEq(uint256(pi[4]), 17, "guess[1]=r");
+        assertEq(uint256(pi[5]), 0, "guess[2]=a");
+        assertEq(uint256(pi[6]), 13, "guess[3]=n");
+        assertEq(uint256(pi[7]), 4, "guess[4]=e");
         assertEq(uint256(pi[FEEDBACK_INDEX]), 293, "feedback packed");
     }
 

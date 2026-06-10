@@ -7,9 +7,11 @@ for the broader game context.
 
 **What this proves (one direction, one guess):** that a 5-tile Wordle `feedback`
 is the correct scoring of a public `guess` against a _private_ `secret` word,
-that the secret opens a public Poseidon `commitment`, and that the secret is a
-real answer word (Poseidon Merkle membership against a public `dictionary_root`).
-Turn alternation, escrow, and the second player's direction are deferred.
+that the secret opens a public Poseidon `commitment` bound to a public
+`match_binding` (the on-chain `matchId`, so a proof can't be replayed in another
+match), and that the secret is a real answer word (Poseidon Merkle membership
+against a public `dictionary_root`). Turn alternation, escrow, and the second
+player's direction are deferred.
 
 ## Toolchain (PINNED — bb/Noir API churns; bumping either is a re-validation event)
 
@@ -55,6 +57,9 @@ test/zk/WordleVerifier.t.sol      # Foundry end-to-end verify + gas/size
   (`scripts/build-tree.ts`) and the Noir circuit agree because bb.js Poseidon2 is
   byte-identical to the Noir `poseidon` lib (verified against the commitment).
   `dictionary_root` is the analog of the existing pinned `wordListHash`.
+- Commitment: `poseidon2([l0..l4, salt, match_binding])`. `match_binding` is the
+  on-chain `matchId` (`WordleDuel` masks it to 253 bits to be a valid field
+  element), binding each proof to one match so it can't be replayed elsewhere.
 
 ## Commands
 
@@ -87,21 +92,19 @@ bun run scripts/prove.ts             # single-thread WASM (mobile proxy)
 BB_THREADS=0 bun run scripts/prove.ts  # multi-thread comparison
 ```
 
-Note on public inputs: `target/public_inputs` holds the **8** circuit public
-inputs `[commitment, dictionary_root, guess[0..5], feedback]`. The generated
-verifier reports `NUMBER_OF_PUBLIC_INPUTS = 16` because it adds 8 pairing-point
-limbs — but those live **inside the proof**, so `verify(proof, publicInputs)`
-takes the 8-word array.
+Note on public inputs: `target/public_inputs` holds the **9** circuit public
+inputs `[commitment, dictionary_root, match_binding, guess[0..5], feedback]` —
+the same order `WordleDuel.submitFeedback` builds. The generated verifier reports
+`NUMBER_OF_PUBLIC_INPUTS = 17` because it adds 8 pairing-point limbs — but those
+live **inside the proof**, so `verify(proof, publicInputs)` takes the 9-word array.
 
-## Metrics (measured — full circuit: scoring + Poseidon2 commitment + Merkle membership)
-
-Numbers in parentheses are the pre-membership baseline (scoring + commitment only).
+## Metrics (measured — full circuit: scoring + Poseidon2 commitment + match-binding + Merkle membership)
 
 | Metric                        | Value                                     | "Good" ballpark             | Verdict     |
 | ----------------------------- | ----------------------------------------- | --------------------------- | ----------- |
-| Gate count (`circuit_size`)   | **7,297** (was 631)                       | low-thousands–low-tens-of-k | ✅ under    |
-| Proof size                    | **7,616 B** (was 6,464)                   | ~few KB                     | ✅          |
-| Proving time (WASM, 1-thread) | **~380 ms** (was 787 ms)                  | ≲ ~10 s (mobile proxy)      | ✅          |
+| Gate count (`circuit_size`)   | **7,372** (was 631 pre-membership)        | low-thousands–low-tens-of-k | ✅ under    |
+| Proof size                    | **7,616 B**                               | ~few KB                     | ✅          |
+| Proving time (WASM, 1-thread) | **~400 ms**                               | ≲ ~10 s (mobile proxy)      | ✅          |
 | Verify gas (Gnosis EVM)       | **~2.27 M** median (was 2.08 M)           | —                           | ⚠️ see note |
 | Verifier deploy gas           | ~3.96 M (one-time)                        | —                           | ✅          |
 | Verifier runtime bytecode     | **17,829 B** (was 17,827; 6,747 B margin) | **< 24576 (EIP-170)**       | ✅ PASS     |

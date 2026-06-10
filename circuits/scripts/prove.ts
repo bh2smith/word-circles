@@ -29,8 +29,9 @@ const inputs = {
   secret: ["17", "4", "0", "2", "19"], // "react" (private)
   salt: "123456789",
   leaf_index: "1551",
+  match_binding: "0x1234567890abcdef",
   commitment:
-    "0x1f7a0ec0831a06e6c5a30f6ec2ae1d99b3bea5634321c2450e712f98514713ca",
+    "0x1980814b693a2d688f0c6fa7be8daf0c1a05a5d0e5f611d32cf6eb3ef0aed922",
   dictionary_root:
     "0x0984b03ac65fe9e4710ce7fb30f53d292b0d03f812b247ef32764d6018655f87",
   guess: ["2", "17", "0", "13", "4"], // "crane" (public)

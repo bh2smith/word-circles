@@ -38,11 +38,13 @@ fn main(
     merkle_path: [Field; 12],
     commitment: pub Field,
     dictionary_root: pub Field,
+    match_binding: pub Field,
     guess: pub [u8; 5],
 ) -> pub Field {
-    // (1) The commitment must open to the secret word + salt. This binds the
-    // proven scoring to a value the player committed to earlier on-chain.
-    assert(commit(secret, salt) == commitment, "commitment mismatch");
+    // (1) The commitment must open to the secret word + salt + match_binding.
+    // Binding to the match (matchId) makes a feedback proof unusable in any other
+    // match, even if the same word+salt+guess recur (cross-match replay defense).
+    assert(commit(secret, salt, match_binding) == commitment, "commitment mismatch");
     // (2) The secret must be a real answer word (membership in the dictionary
     // Merkle tree), so a player can't commit to a non-word.
     assert(
@@ -53,19 +55,20 @@ fn main(
     score(secret, guess)
 }
 
-/// Poseidon2 commitment over the 5 letters + salt. SNARK-friendly (cheap
-/// in-circuit) — this is a NEW commitment binding letters, distinct from and
-/// coexisting with the existing keccak/wordIndex scheme in WordCommitment.sol.
-fn commit(secret: [u8; 5], salt: Field) -> Field {
-    let preimage: [Field; 6] = [
+/// Poseidon2 commitment over the 5 letters + salt + match_binding. SNARK-friendly
+/// (cheap in-circuit) — a NEW commitment binding letters AND the match, distinct
+/// from and coexisting with the keccak/wordIndex scheme in WordCommitment.sol.
+fn commit(secret: [u8; 5], salt: Field, match_binding: Field) -> Field {
+    let preimage: [Field; 7] = [
         secret[0] as Field,
         secret[1] as Field,
         secret[2] as Field,
         secret[3] as Field,
         secret[4] as Field,
         salt,
+        match_binding,
     ];
-    Poseidon2::hash(preimage, 6)
+    Poseidon2::hash(preimage, 7)
 }
 
 /// Recompute the Merkle root from the secret's leaf and its sibling path.
@@ -151,6 +154,8 @@ fn score(secret: [u8; 5], guess: [u8; 5]) -> Field {
 global REACT: [u8; 5] = [17, 4, 0, 2, 19];
 global REACT_SALT: Field = 123456789;
 global REACT_INDEX: u32 = 1551;
+// Sample match binding (a field-sized matchId; WordleDuel masks matchId to 253 bits).
+global MATCH_BINDING: Field = 0x1234567890abcdef;
 global DICT_ROOT: Field = 0x0984b03ac65fe9e4710ce7fb30f53d292b0d03f812b247ef32764d6018655f87;
 global REACT_PATH: [Field; 12] = [
     0x045bd9ed3ac414de0d5fac24eb9b9c7fbee04989a18709d7685ba8e5c5b936e0,
@@ -224,7 +229,7 @@ fn test_membership_bad_index() {
 #[test]
 fn test_main_full() {
     let crane = [2, 17, 0, 13, 4]; // guess
-    let commitment = commit(REACT, REACT_SALT);
+    let commitment = commit(REACT, REACT_SALT, MATCH_BINDING);
     let fb = main(
         REACT,
         REACT_SALT,
@@ -232,6 +237,7 @@ fn test_main_full() {
         REACT_PATH,
         commitment,
         DICT_ROOT,
+        MATCH_BINDING,
         crane,
     );
     assert(fb == 293);
@@ -241,7 +247,7 @@ fn test_main_full() {
 #[test(should_fail_with = "commitment mismatch")]
 fn test_main_bad_commitment() {
     let crane = [2, 17, 0, 13, 4];
-    let bad_commitment = commit(REACT, REACT_SALT) + 1;
+    let bad_commitment = commit(REACT, REACT_SALT, MATCH_BINDING) + 1;
     let _ = main(
         REACT,
         REACT_SALT,
@@ -249,6 +255,25 @@ fn test_main_bad_commitment() {
         REACT_PATH,
         bad_commitment,
         DICT_ROOT,
+        MATCH_BINDING,
+        crane,
+    );
+}
+
+// Replaying the proof's commitment under a DIFFERENT match must fail: the
+// commitment is bound to match_binding, so a mismatched binding can't open it.
+#[test(should_fail_with = "commitment mismatch")]
+fn test_main_wrong_binding() {
+    let crane = [2, 17, 0, 13, 4];
+    let commitment = commit(REACT, REACT_SALT, MATCH_BINDING);
+    let _ = main(
+        REACT,
+        REACT_SALT,
+        REACT_INDEX,
+        REACT_PATH,
+        commitment,
+        DICT_ROOT,
+        MATCH_BINDING + 1, // different match
         crane,
     );
 }
@@ -257,5 +282,5 @@ fn test_main_bad_commitment() {
 // Run: `nargo test print_sample_commitment --show-output`
 #[test]
 fn print_sample_commitment() {
-    println(commit(REACT, REACT_SALT));
+    println(commit(REACT, REACT_SALT, MATCH_BINDING));
 }
