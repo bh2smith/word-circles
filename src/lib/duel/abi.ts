@@ -84,6 +84,54 @@ export const WORDLE_DUEL_ABI = [
     inputs: [{ name: "player", type: "address" }],
     outputs: [{ name: "", type: "uint256" }],
   },
+  {
+    type: "function",
+    name: "token",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+  },
+  {
+    type: "function",
+    name: "DICT_ROOT",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "bytes32" }],
+  },
+  {
+    type: "function",
+    name: "getMatch",
+    stateMutability: "view",
+    inputs: [{ name: "matchId", type: "bytes32" }],
+    outputs: [
+      { name: "playerA", type: "address" },
+      { name: "playerB", type: "address" },
+      { name: "stake", type: "uint256" },
+      { name: "commitmentA", type: "bytes32" },
+      { name: "commitmentB", type: "bytes32" },
+      { name: "createDeadline", type: "uint64" },
+      { name: "status", type: "uint8" },
+    ],
+  },
+  {
+    type: "function",
+    name: "getTrack",
+    stateMutability: "view",
+    inputs: [
+      { name: "matchId", type: "bytes32" },
+      { name: "isTrackA", type: "bool" },
+    ],
+    outputs: [
+      { name: "guessCount", type: "uint8" },
+      { name: "greens", type: "uint8" },
+      { name: "oranges", type: "uint8" },
+      { name: "solvedAtGuess", type: "uint8" },
+      { name: "solved", type: "bool" },
+      { name: "pendingGuess", type: "bool" },
+      { name: "deadline", type: "uint64" },
+      { name: "guess", type: "uint8[5]" },
+    ],
+  },
 ] as const;
 
 export const encodeCreateMatch = (
