@@ -15,6 +15,26 @@ export interface FeedbackProofLike {
 
 export const WORDLE_DUEL_ABI = [
   {
+    type: "event",
+    name: "GuessSubmitted",
+    inputs: [
+      { name: "matchId", type: "bytes32", indexed: true },
+      { name: "guesser", type: "address", indexed: true },
+      { name: "guessNumber", type: "uint8", indexed: false },
+      { name: "guess", type: "uint8[5]", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "FeedbackSubmitted",
+    inputs: [
+      { name: "matchId", type: "bytes32", indexed: true },
+      { name: "owner", type: "address", indexed: true },
+      { name: "guessNumber", type: "uint8", indexed: false },
+      { name: "feedback", type: "uint16", indexed: false },
+    ],
+  },
+  {
     type: "function",
     name: "createMatch",
     stateMutability: "nonpayable",

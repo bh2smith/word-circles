@@ -12,11 +12,21 @@ interface TileProps {
   letter: string;
   result?: LetterResult;
   isCurrent?: boolean;
+  size?: "default" | "sm";
 }
 
-export default function Tile({ letter, result, isCurrent }: TileProps) {
-  const base =
-    "w-14 h-14 sm:w-16 sm:h-16 rounded-xl border-2 flex items-center justify-center text-2xl sm:text-3xl font-bold uppercase transition-all duration-200 select-none";
+const SIZE = {
+  default: "w-14 h-14 sm:w-16 sm:h-16 text-2xl sm:text-3xl rounded-xl",
+  sm: "w-9 h-9 sm:w-11 sm:h-11 text-lg sm:text-xl rounded-lg",
+} as const;
+
+export default function Tile({
+  letter,
+  result,
+  isCurrent,
+  size = "default",
+}: TileProps) {
+  const base = `${SIZE[size]} border-2 flex items-center justify-center font-bold uppercase transition-all duration-200 select-none`;
 
   let style: string;
   if (result) {
