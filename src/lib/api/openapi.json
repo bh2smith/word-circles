@@ -470,6 +470,45 @@
         }
       }
     },
+    "/api/stats": {
+      "get": {
+        "tags": [],
+        "operationId": "get_player_stats",
+        "parameters": [
+          {
+            "name": "player",
+            "in": "query",
+            "description": "0x-prefixed player address.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Player's lifetime daily-game stats",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayerStatsResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "tags": [],
@@ -792,6 +831,47 @@
           },
           "word": {
             "type": "string"
+          }
+        }
+      },
+      "PlayerStatsResponse": {
+        "type": "object",
+        "required": [
+          "gamesPlayed",
+          "gamesWon",
+          "currentStreak",
+          "maxStreak",
+          "guessDistribution"
+        ],
+        "properties": {
+          "currentStreak": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "gamesPlayed": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "gamesWon": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "guessDistribution": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            },
+            "description": "Wins bucketed by guess count: index 0 = solved in 1 guess, … index 5 = 6."
+          },
+          "maxStreak": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
           }
         }
       },

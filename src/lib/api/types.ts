@@ -148,6 +148,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_player_stats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -286,6 +302,18 @@ export interface components {
         PlayerGuess: {
             results: components["schemas"]["LetterResult"][];
             word: string;
+        };
+        PlayerStatsResponse: {
+            /** Format: int32 */
+            currentStreak: number;
+            /** Format: int32 */
+            gamesPlayed: number;
+            /** Format: int32 */
+            gamesWon: number;
+            /** @description Wins bucketed by guess count: index 0 = solved in 1 guess, … index 5 = 6. */
+            guessDistribution: number[];
+            /** Format: int32 */
+            maxStreak: number;
         };
         PvpGameResponse: {
             answer?: string | null;
@@ -689,6 +717,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DailyResult"][];
+                };
+            };
+            /** @description Internal error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_player_stats: {
+        parameters: {
+            query: {
+                /** @description 0x-prefixed player address. */
+                player: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Player's lifetime daily-game stats */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlayerStatsResponse"];
                 };
             };
             /** @description Internal error */

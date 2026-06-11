@@ -16,7 +16,9 @@ use axum::{
 };
 use chain::{ContractConfig, FundedSet};
 use db::{
-    models::{DailyResult, GamePlayerRecord, GameRecord, GuessRecord, LeaderboardEntry},
+    models::{
+        DailyOutcome, DailyResult, GamePlayerRecord, GameRecord, GuessRecord, LeaderboardEntry,
+    },
     repository::{GameRepository, RepositoryError},
 };
 use serde::{Deserialize, Serialize};
@@ -598,6 +600,86 @@ async fn get_daily_leaderboard<R: GameRepository>(
     }
 }
 
+#[derive(Deserialize, IntoParams)]
+struct StatsQuery {
+    /// 0x-prefixed player address.
+    player: String,
+}
+
+#[derive(Serialize, ToSchema)]
+struct PlayerStatsResponse {
+    #[serde(rename = "gamesPlayed")]
+    games_played: u32,
+    #[serde(rename = "gamesWon")]
+    games_won: u32,
+    #[serde(rename = "currentStreak")]
+    current_streak: u32,
+    #[serde(rename = "maxStreak")]
+    max_streak: u32,
+    /// Wins bucketed by guess count: index 0 = solved in 1 guess, … index 5 = 6.
+    #[serde(rename = "guessDistribution")]
+    guess_distribution: Vec<u32>,
+}
+
+/// Fold a player's completed daily games (ascending game id) into the stats
+/// shown in the frontend modal. Streak semantics mirror WordCircleStats.sol:
+/// a win extends the streak only when the game id directly follows the
+/// previous completed game (a skipped day restarts at 1); a loss resets to 0.
+fn compute_player_stats(history: &[DailyOutcome]) -> PlayerStatsResponse {
+    let mut stats = PlayerStatsResponse {
+        games_played: 0,
+        games_won: 0,
+        current_streak: 0,
+        max_streak: 0,
+        guess_distribution: vec![0; game::MAX_GUESSES],
+    };
+    let mut prev_game_id: Option<u32> = None;
+    for outcome in history {
+        stats.games_played += 1;
+        if outcome.solved {
+            stats.games_won += 1;
+            stats.current_streak = if prev_game_id == Some(outcome.game_id.wrapping_sub(1)) {
+                stats.current_streak + 1
+            } else {
+                1
+            };
+            stats.max_streak = stats.max_streak.max(stats.current_streak);
+            let bucket = (outcome.guess_count as usize).clamp(1, game::MAX_GUESSES) - 1;
+            stats.guess_distribution[bucket] += 1;
+        } else {
+            stats.current_streak = 0;
+        }
+        prev_game_id = Some(outcome.game_id);
+    }
+    stats
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/stats",
+    params(StatsQuery),
+    responses(
+        (status = 200, description = "Player's lifetime daily-game stats", body = PlayerStatsResponse),
+        (status = 500, description = "Internal error", body = ErrorResponse),
+    )
+)]
+async fn get_player_stats<R: GameRepository>(
+    State(state): State<Arc<AppState<R>>>,
+    Query(query): Query<StatsQuery>,
+) -> impl IntoResponse {
+    debug!(player = %query.player, "GET /api/stats");
+    match state.repo.get_daily_history(&query.player).await {
+        Ok(history) => {
+            let stats = compute_player_stats(&history);
+            (StatusCode::OK, Json(serde_json::to_value(stats).unwrap()))
+        }
+        Err(e) => {
+            error!("Failed to fetch stats for {}: {e}", query.player);
+            err_response(StatusCode::INTERNAL_SERVER_ERROR, "Failed to fetch stats")
+        }
+    }
+}
+
 #[derive(Serialize, ToSchema)]
 struct PvpPlayerStatus {
     address: String,
@@ -1051,6 +1133,7 @@ async fn post_group_join<R: GameRepository>(
         post_guess,
         get_leaderboard,
         get_daily_leaderboard,
+        get_player_stats,
         get_pvp_game,
         get_player_games,
         get_pvp_transcript,
@@ -1066,6 +1149,7 @@ async fn post_group_join<R: GameRepository>(
         chain::LobbyConfig,
         LeaderboardEntry,
         DailyResult,
+        PlayerStatsResponse,
         PvpGameResponse,
         PvpPlayerStatus,
         PvpTranscript,
@@ -1103,6 +1187,7 @@ pub fn build_router<R: GameRepository>(
         .route("/api/group/join", post(post_group_join::<R>))
         .route("/api/leaderboard", get(get_leaderboard::<R>))
         .route("/api/leaderboard/daily", get(get_daily_leaderboard::<R>))
+        .route("/api/stats", get(get_player_stats::<R>))
         .with_state(state)
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
         .layer(CorsLayer::permissive())
@@ -1110,8 +1195,56 @@ pub fn build_router<R: GameRepository>(
 
 #[cfg(test)]
 mod tests {
-    use super::{group_join_message, is_timed_out, parse_timestamp};
+    use super::{
+        DailyOutcome, compute_player_stats, group_join_message, is_timed_out, parse_timestamp,
+    };
     use chrono::Utc;
+
+    fn outcome(game_id: u32, solved: bool, guess_count: u32) -> DailyOutcome {
+        DailyOutcome {
+            game_id,
+            solved,
+            guess_count,
+        }
+    }
+
+    #[test]
+    fn stats_empty_history() {
+        let s = compute_player_stats(&[]);
+        assert_eq!(s.games_played, 0);
+        assert_eq!(s.games_won, 0);
+        assert_eq!(s.current_streak, 0);
+        assert_eq!(s.max_streak, 0);
+        assert_eq!(s.guess_distribution, vec![0; 6]);
+    }
+
+    #[test]
+    fn stats_streaks_match_contract_semantics() {
+        // Win 100, win 101 (streak 2), skip 102, win 103 (restarts at 1),
+        // lose 104 (resets to 0), win 105 (back to 1).
+        let history = vec![
+            outcome(100, true, 3),
+            outcome(101, true, 4),
+            outcome(103, true, 3),
+            outcome(104, false, 6),
+            outcome(105, true, 1),
+        ];
+        let s = compute_player_stats(&history);
+        assert_eq!(s.games_played, 5);
+        assert_eq!(s.games_won, 4);
+        assert_eq!(s.current_streak, 1);
+        assert_eq!(s.max_streak, 2);
+        assert_eq!(s.guess_distribution, vec![1, 0, 2, 1, 0, 0]);
+    }
+
+    #[test]
+    fn stats_loss_then_next_day_win_starts_new_streak() {
+        // The contract tracks lastGameId across losses too: a loss on day N
+        // followed by a win on N+1 yields streak 1 (0 + 1).
+        let s = compute_player_stats(&[outcome(7, false, 6), outcome(8, true, 2)]);
+        assert_eq!(s.current_streak, 1);
+        assert_eq!(s.max_streak, 1);
+    }
 
     #[test]
     fn group_join_message_is_stable_and_lowercased() {
