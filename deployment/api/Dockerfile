@@ -1,1 +1,1 @@
-FROM bh2smith/word-circles-backend:0.7.4
+FROM bh2smith/word-circles-backend:0.7.5
