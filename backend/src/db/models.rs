@@ -46,6 +46,16 @@ pub struct LeaderboardEntry {
     pub avg_guesses: f64,
 }
 
+/// Outcome of one completed daily game for a player, aggregated from the
+/// `guesses` table. `guess_count` is the winning guess number when solved,
+/// otherwise the number of guesses used.
+#[derive(Debug, Clone)]
+pub struct DailyOutcome {
+    pub game_id: u32,
+    pub solved: bool,
+    pub guess_count: u32,
+}
+
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct DailyResult {
     pub address: String,

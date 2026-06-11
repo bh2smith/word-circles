@@ -1,5 +1,6 @@
 use super::models::{
-    DailyResult, GamePlayerRecord, GameRecord, GuessRecord, LeaderboardEntry, PlayerRecord,
+    DailyOutcome, DailyResult, GamePlayerRecord, GameRecord, GuessRecord, LeaderboardEntry,
+    PlayerRecord,
 };
 use super::repository::{GameRepository, RepositoryError};
 use sqlx::PgPool;
@@ -266,6 +267,41 @@ impl GameRepository for PostgresRepository {
                 wins: r.1 as u32,
                 games_played: r.2 as u32,
                 avg_guesses: r.3,
+            })
+            .collect())
+    }
+
+    async fn get_daily_history(&self, address: &str) -> Result<Vec<DailyOutcome>, RepositoryError> {
+        let bytes = decode_address(address);
+        // A daily game is "completed" once it's won or all guesses are used —
+        // today's in-progress game must not count as played. For wins the
+        // distribution bucket is the winning guess number (not the row count,
+        // which could include stale duplicates after a lost-localStorage replay).
+        let rows: Vec<(i32, bool, i32)> = sqlx::query_as(
+            "SELECT g.game_id::int                AS game_id,
+                    BOOL_OR(g.is_correct)         AS solved,
+                    COALESCE(MIN(g.guess_number) FILTER (WHERE g.is_correct) + 1,
+                             COUNT(*))::int       AS guess_count
+             FROM guesses g
+             JOIN games gm  ON gm.id = g.game_id AND gm.game_type = 'daily'
+             JOIN players p ON p.id = g.player_id
+             WHERE p.address = $1
+             GROUP BY g.game_id
+             HAVING BOOL_OR(g.is_correct) OR COUNT(*) >= $2
+             ORDER BY g.game_id::int",
+        )
+        .bind(&bytes)
+        .bind(crate::game::MAX_GUESSES as i64)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| RepositoryError::Internal(e.to_string()))?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| DailyOutcome {
+                game_id: r.0 as u32,
+                solved: r.1,
+                guess_count: r.2 as u32,
             })
             .collect())
     }

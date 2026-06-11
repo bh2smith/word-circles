@@ -97,6 +97,27 @@ export default function Game() {
     return unsubscribe;
   }, []);
 
+  // Lifetime stats from the server, aggregated from the player's recorded
+  // guesses keyed by wallet address — survives lost localStorage and device
+  // switches. localStorage is just a cache / no-wallet fallback.
+  const refreshStats = useCallback(() => {
+    if (!walletAddress) return;
+    api
+      .GET("/api/stats", { params: { query: { player: walletAddress } } })
+      .then(({ data }) => {
+        if (data) {
+          setStats(data);
+          saveStats(data);
+        }
+      })
+      // Network hiccup — keep whatever stats are already displayed.
+      .catch(() => {});
+  }, [walletAddress]);
+
+  useEffect(() => {
+    refreshStats();
+  }, [refreshStats]);
+
   // Fetch game state. When a wallet is available we ask the server for the
   // player's recorded guesses and use them as source of truth — localStorage
   // can be lost (private browsing, ITP, in-app webview), and falling back to a
@@ -271,12 +292,23 @@ export default function Game() {
       });
 
       if (newStatus !== "playing") {
+        // The final guess is already recorded server-side; reconcile the
+        // optimistic local update with the authoritative aggregate.
+        refreshStats();
         setTimeout(() => setShowStats(true), 1500);
       }
     } finally {
       setSubmitting(false);
     }
-  }, [currentGuess, gameId, guesses, status, submitting, updateStats]);
+  }, [
+    currentGuess,
+    gameId,
+    guesses,
+    status,
+    submitting,
+    updateStats,
+    refreshStats,
+  ]);
 
   const onKey = useCallback(
     (key: string) => {

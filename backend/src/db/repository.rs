@@ -1,5 +1,6 @@
 use super::models::{
-    DailyResult, GamePlayerRecord, GameRecord, GuessRecord, LeaderboardEntry, PlayerRecord,
+    DailyOutcome, DailyResult, GamePlayerRecord, GameRecord, GuessRecord, LeaderboardEntry,
+    PlayerRecord,
 };
 use std::fmt;
 use std::future::Future;
@@ -74,6 +75,14 @@ pub trait GameRepository: Send + Sync + 'static {
         limit: u32,
         offset: u32,
     ) -> impl Future<Output = Result<Vec<LeaderboardEntry>, RepositoryError>> + Send;
+
+    /// All *completed* daily games for an address (won, or all guesses used),
+    /// ordered by ascending game id. Source of truth for personal stats so
+    /// they survive lost localStorage / device switches.
+    fn get_daily_history(
+        &self,
+        address: &str,
+    ) -> impl Future<Output = Result<Vec<DailyOutcome>, RepositoryError>> + Send;
 
     fn get_daily_results(
         &self,

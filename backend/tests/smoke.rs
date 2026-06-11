@@ -651,3 +651,105 @@ async fn pvp_guess_marks_finished_on_last_guess(pool: PgPool) {
         .unwrap();
     assert_eq!(p1["status"], "finished");
 }
+
+/// Seed one daily game's guesses for a player. `winning_guess = Some(n)` marks
+/// the nth guess correct; `None` writes `total` losing guesses.
+async fn seed_daily_guesses(
+    pool: &PgPool,
+    player: &str,
+    game_id: u32,
+    winning_guess: Option<u32>,
+    total: u32,
+) {
+    sqlx::query(
+        "INSERT INTO games (id, game_type, word_index) VALUES ($1, 'daily', 0)
+         ON CONFLICT DO NOTHING",
+    )
+    .bind(game_id.to_string())
+    .execute(pool)
+    .await
+    .unwrap();
+
+    let repo = PostgresRepository::from_pool(pool.clone());
+    let player_record = repo.get_or_create_player(player).await.unwrap();
+
+    let count = winning_guess.unwrap_or(total);
+    for n in 1..=count {
+        sqlx::query(
+            "INSERT INTO guesses (game_id, player_id, guess_number, word, results, is_correct)
+             VALUES ($1, $2, $3, 'crane', '[]', $4)",
+        )
+        .bind(game_id.to_string())
+        .bind(player_record.id)
+        .bind((n - 1) as i32)
+        .bind(winning_guess == Some(n))
+        .execute(pool)
+        .await
+        .unwrap();
+    }
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn stats_empty_for_unknown_player(pool: PgPool) {
+    let body = json_body(
+        app(pool)
+            .oneshot(
+                Request::get("/api/stats?player=0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap(),
+    )
+    .await;
+
+    assert_eq!(body["gamesPlayed"], 0);
+    assert_eq!(body["gamesWon"], 0);
+    assert_eq!(body["currentStreak"], 0);
+    assert_eq!(body["maxStreak"], 0);
+    assert_eq!(
+        body["guessDistribution"],
+        serde_json::json!([0, 0, 0, 0, 0, 0])
+    );
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn stats_aggregate_completed_daily_games(pool: PgPool) {
+    let player = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    // Wins on consecutive days 100/101, a loss on 103, and an in-progress game
+    // on 105 (two guesses, unsolved) that must not count as played.
+    seed_daily_guesses(&pool, player, 100, Some(3), 3).await;
+    seed_daily_guesses(&pool, player, 101, Some(4), 4).await;
+    seed_daily_guesses(&pool, player, 103, None, 6).await;
+    seed_daily_guesses(&pool, player, 105, None, 2).await;
+    // Another player's win must not bleed into this player's stats.
+    seed_daily_guesses(
+        &pool,
+        "0xcccccccccccccccccccccccccccccccccccccccc",
+        101,
+        Some(1),
+        1,
+    )
+    .await;
+
+    let body = json_body(
+        app(pool)
+            .oneshot(
+                Request::get(&format!("/api/stats?player={player}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap(),
+    )
+    .await;
+
+    assert_eq!(body["gamesPlayed"], 3);
+    assert_eq!(body["gamesWon"], 2);
+    assert_eq!(body["currentStreak"], 0); // the loss on 103 reset it
+    assert_eq!(body["maxStreak"], 2);
+    assert_eq!(
+        body["guessDistribution"],
+        serde_json::json!([0, 0, 1, 1, 0, 0])
+    );
+}
