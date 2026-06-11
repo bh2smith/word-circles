@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatUnits, parseUnits, type Hex } from "viem";
 import ConnectAccount from "./ConnectAccount";
+import Tile from "./Tile";
 import Toast from "./Toast";
 import {
   CIRCLES_MINIAPP_URL,
@@ -16,8 +17,14 @@ import {
 import { encodeApprove } from "@/lib/contract";
 import { VALID_GUESSES } from "@/lib/words";
 import { commitWord } from "@/lib/duel/commitment";
-import { encodeSubmitFeedbackFromProof } from "@/lib/duel";
 import {
+  encodeSubmitFeedbackFromProof,
+  MAX_GUESSES,
+  WORD_LENGTH,
+  type Tile as FeedbackTile,
+} from "@/lib/duel";
+import {
+  currentBlock,
   DEFAULT_ZK_DUEL_STAKE,
   FRONTEND_ZK_DUEL_ENABLED,
   ZK_DUEL_ADDRESS,
@@ -31,6 +38,7 @@ import {
   isParticipant,
   loadLastZkDuel,
   loadZkAnswers,
+  loadZkBoard,
   loadZkDuelSecret,
   matchBinding,
   myAnswerTrack,
@@ -39,11 +47,17 @@ import {
   newSalt,
   readZkDuelToken,
   readZkMatch,
+  saveZkBoard,
   saveZkDuelSecret,
+  scanZkBoards,
   type StoredZkDuelSecret,
+  type ZkBoardRow,
+  type ZkBoards,
   type ZkMatchState,
   type ZkTrackState,
 } from "@/lib/duel/frontend";
+
+const TILE_RESULT = ["absent", "present", "correct"] as const;
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
@@ -78,6 +92,8 @@ export default function ZkDuelGame() {
   const [storedSecret, setStoredSecret] = useState<StoredZkDuelSecret | null>(
     null,
   );
+  const [boards, setBoards] = useState<ZkBoards | null>(null);
+  const boardsRef = useRef<ZkBoards | null>(null);
 
   useEffect(() => {
     initCircles();
@@ -108,12 +124,37 @@ export default function ZkDuelGame() {
     /* eslint-enable react-hooks/set-state-in-effect */
   }, [walletAddress, matchId]);
 
+  useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
+    if (!matchId) {
+      boardsRef.current = null;
+      setBoards(null);
+      return;
+    }
+    const loaded = loadZkBoard(matchId);
+    boardsRef.current = loaded;
+    setBoards(loaded);
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, [matchId]);
+
   const refreshState = useCallback(async () => {
     if (!matchId) return;
     try {
       const next = await readZkMatch(matchId, walletAddress);
       assertOnchainDictRoot(next);
       setState(next);
+      // Both players are seated once the match is active; only then are there
+      // guesses to map onto tracks. Scan incrementally from the last poll.
+      if (next.status === "active" || next.status === "settled") {
+        try {
+          const scanned = await scanZkBoards(matchId, next, boardsRef.current);
+          boardsRef.current = scanned;
+          setBoards(scanned);
+          saveZkBoard(matchId, scanned);
+        } catch (scanErr) {
+          console.error("ZK duel board scan failed:", scanErr);
+        }
+      }
     } catch (err) {
       console.error("ZK duel read failed:", err);
       setToast("Couldn't read the duel contract state");
@@ -173,6 +214,7 @@ export default function ZkDuelGame() {
         matchBinding(id),
       );
       const token = await readZkDuelToken();
+      const startBlock = await currentBlock();
       await joinPvpGame({
         escrow: ZK_DUEL_ADDRESS,
         token,
@@ -192,6 +234,13 @@ export default function ZkDuelGame() {
       };
       saveZkDuelSecret(walletAddress, saved);
       setStoredSecret(saved);
+      // Seed the board so live scans start from creation instead of cold-
+      // scanning from the deploy block.
+      saveZkBoard(id, {
+        trackA: [],
+        trackB: [],
+        lastScannedBlock: startBlock > 0n ? startBlock - 1n : 0n,
+      });
       setMatchId(id);
       setJoinMatchId(id);
       setMode("active");
@@ -230,6 +279,7 @@ export default function ZkDuelGame() {
         saltValue,
         matchBinding(id),
       );
+      const startBlock = await currentBlock();
       await joinPvpGame({
         escrow: ZK_DUEL_ADDRESS,
         token: before.token,
@@ -248,6 +298,11 @@ export default function ZkDuelGame() {
       };
       saveZkDuelSecret(walletAddress, saved);
       setStoredSecret(saved);
+      saveZkBoard(id, {
+        trackA: [],
+        trackB: [],
+        lastScannedBlock: startBlock > 0n ? startBlock - 1n : 0n,
+      });
       setMatchId(id);
       setMode("active");
       setToast("Joined. The duel is live once the transaction lands.");
@@ -485,6 +540,7 @@ export default function ZkDuelGame() {
         <ActiveDuel
           matchId={matchId}
           state={state}
+          boards={boards}
           myTrack={myTrack}
           answerTrack={answerTrack}
           storedSecret={storedSecret}
@@ -508,6 +564,7 @@ export default function ZkDuelGame() {
 function ActiveDuel(props: {
   matchId: Hex;
   state: ZkMatchState | null;
+  boards: ZkBoards | null;
   myTrack: ZkTrackState | null;
   answerTrack: ZkTrackState | null;
   storedSecret: StoredZkDuelSecret | null;
@@ -537,6 +594,14 @@ function ActiveDuel(props: {
     props.myTrack.guessCount < 6;
   const pendingForMe =
     state?.status === "active" && props.answerTrack?.pendingGuess === true;
+
+  // I guess on trackA iff I'm player A; my word is answered on the other track.
+  const iAmPlayerA =
+    !!state &&
+    state.playerA.toLowerCase() === props.walletAddress.toLowerCase();
+  const myRows = iAmPlayerA ? props.boards?.trackA : props.boards?.trackB;
+  const answerRows = iAmPlayerA ? props.boards?.trackB : props.boards?.trackA;
+  const myWord = props.storedSecret?.secret ?? null;
 
   return (
     <div className="flex w-full flex-col gap-4">
@@ -579,12 +644,31 @@ function ActiveDuel(props: {
         </div>
       )}
 
-      {state?.status === "active" && (
+      {(state?.status === "active" || state?.status === "settled") && (
         <div className="grid gap-4 sm:grid-cols-2">
-          <TrackCard title="Your guesses" track={props.myTrack} />
           <TrackCard
-            title="Opponent guesses to answer"
+            title="Your guesses"
+            subtitle="You're guessing your opponent's word."
+            track={props.myTrack}
+            rows={myRows ?? []}
+            pendingWord={
+              props.myTrack?.pendingGuess ? props.myTrack.guessWord : null
+            }
+          />
+          <TrackCard
+            title="Their guesses"
+            subtitle={
+              myWord
+                ? `They're guessing your word: ${myWord.toUpperCase()}`
+                : "They're guessing your word."
+            }
             track={props.answerTrack}
+            rows={answerRows ?? []}
+            pendingWord={
+              props.answerTrack?.pendingGuess
+                ? props.answerTrack.guessWord
+                : null
+            }
           />
         </div>
       )}
@@ -672,28 +756,75 @@ function ActiveDuel(props: {
   );
 }
 
-function TrackCard(props: { title: string; track: ZkTrackState | null }) {
+function TrackCard(props: {
+  title: string;
+  subtitle: string;
+  track: ZkTrackState | null;
+  rows: ZkBoardRow[];
+  pendingWord: string | null;
+}) {
   const track = props.track;
   return (
-    <div className="rounded-2xl border border-border bg-surface/80 p-4 text-left shadow-sm">
-      <p className="font-bold">{props.title}</p>
+    <div className="rounded-2xl border border-border bg-surface/80 p-4 shadow-sm">
+      <p className="text-center font-bold">{props.title}</p>
+      <p className="mt-0.5 text-center text-xs text-muted">{props.subtitle}</p>
       {track ? (
-        <div className="mt-2 space-y-1 text-sm text-muted">
-          <p>Guesses: {track.guessCount}/6</p>
-          <p>
-            Pending:{" "}
-            {track.pendingGuess ? track.guessWord.toUpperCase() : "none"}
+        <>
+          <div className="mt-3">
+            <DuelBoard rows={props.rows} pendingWord={props.pendingWord} />
+          </div>
+          <p className="mt-3 text-center text-xs text-muted">
+            {track.solved
+              ? `Solved in ${track.solvedAtGuess}`
+              : track.pendingGuess
+                ? "Awaiting feedback proof…"
+                : `${track.guessCount}/${MAX_GUESSES} guesses`}
+            {" · "}
+            {track.greens} green / {track.oranges} orange
           </p>
-          <p>
-            Solved: {track.solved ? `yes, at ${track.solvedAtGuess}` : "no"}
-          </p>
-          <p>
-            Tiebreak tiles: {track.greens} green / {track.oranges} orange
-          </p>
-        </div>
+        </>
       ) : (
-        <p className="mt-2 text-sm text-muted">Not seated in this match.</p>
+        <p className="mt-3 text-center text-sm text-muted">
+          Not seated in this match.
+        </p>
       )}
+    </div>
+  );
+}
+
+function DuelBoard(props: { rows: ZkBoardRow[]; pendingWord: string | null }) {
+  // Show resolved rows, then overlay the on-chain pending guess (if the event
+  // hasn't been scanned into a row yet) so a just-submitted guess appears at once.
+  const rows = [...props.rows];
+  if (props.pendingWord && !rows.some((r) => r.tiles === null)) {
+    rows.push({
+      guessNumber: rows.length + 1,
+      word: props.pendingWord,
+      tiles: null,
+    });
+  }
+
+  return (
+    <div className="flex flex-col items-center gap-1">
+      {Array.from({ length: MAX_GUESSES }, (_, i) => {
+        const row = rows[i];
+        return (
+          <div key={i} className="flex gap-1">
+            {Array.from({ length: WORD_LENGTH }, (_, j) => {
+              const letter = row?.word[j] ?? "";
+              const tile = row?.tiles?.[j] as FeedbackTile | undefined;
+              return (
+                <Tile
+                  key={j}
+                  size="sm"
+                  letter={letter}
+                  result={tile === undefined ? undefined : TILE_RESULT[tile]}
+                />
+              );
+            })}
+          </div>
+        );
+      })}
     </div>
   );
 }

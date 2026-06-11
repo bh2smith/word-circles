@@ -19,6 +19,8 @@ import {
   encodeWithdraw,
   WORDLE_DUEL_ABI,
   lettersToWord,
+  unpackFeedback,
+  type Tile,
 } from "@/lib/duel";
 
 export const FRONTEND_ZK_DUEL_ENABLED =
@@ -39,6 +41,19 @@ export const DEFAULT_ZK_DUEL_STAKE = parseEnvBigInt(
 
 export const ANSWERS_URL =
   process.env.NEXT_PUBLIC_ZK_DUEL_ANSWERS_URL ?? "/zk-duel-answers.json";
+
+/**
+ * Block the WordleDuel contract was deployed at, used as the floor for the
+ * very first (cold) event scan when there is no persisted board to resume from.
+ * Defaults to the M3 Gnosis deployment; override per-deployment via env.
+ */
+export const ZK_DUEL_DEPLOY_BLOCK = parseEnvBigInt(
+  process.env.NEXT_PUBLIC_ZK_DUEL_DEPLOY_BLOCK,
+  46624922n,
+);
+
+/** Max block span per getLogs request, to stay under public-RPC range caps. */
+const LOG_CHUNK = 9000n;
 
 const publicClient = createPublicClient({ chain: gnosis, transport: http() });
 
@@ -78,6 +93,28 @@ export interface ZkMatchState {
   withdrawable: bigint;
   dictRoot: Hex;
   token: Address;
+}
+
+/**
+ * One rendered board line: the plaintext guess plus its per-tile colors once
+ * the word-owner has answered with a proof. `tiles === null` means the guess is
+ * on-chain but still awaiting feedback (renders as an uncolored row).
+ */
+export interface ZkBoardRow {
+  guessNumber: number;
+  word: string;
+  tiles: Tile[] | null;
+}
+
+/**
+ * Both guess tracks reconstructed from GuessSubmitted/FeedbackSubmitted logs.
+ * `lastScannedBlock` lets us resume incrementally instead of re-scanning from
+ * the deploy block on every poll.
+ */
+export interface ZkBoards {
+  trackA: ZkBoardRow[];
+  trackB: ZkBoardRow[];
+  lastScannedBlock: bigint;
 }
 
 export interface StoredZkDuelSecret {
@@ -176,6 +213,128 @@ export async function readZkMatch(
     dictRoot,
     withdrawable,
   };
+}
+
+export async function currentBlock(): Promise<bigint> {
+  return publicClient.getBlockNumber();
+}
+
+/**
+ * Reconstruct both colored boards from the duel's GuessSubmitted /
+ * FeedbackSubmitted logs over RPC. Pass the previous result to scan only the
+ * blocks since the last poll (cheap for a live game); pass `null` to cold-start
+ * from the deploy block. `matchId` is an indexed topic, so each query returns
+ * only this match's handful of logs.
+ */
+export async function scanZkBoards(
+  matchId: Hex,
+  state: Pick<ZkMatchState, "playerA" | "playerB">,
+  prev: ZkBoards | null,
+): Promise<ZkBoards> {
+  if (!ZK_DUEL_ADDRESS) throw new Error("ZK duel address is not configured");
+  const latest = await publicClient.getBlockNumber();
+  const fromBlock = prev ? prev.lastScannedBlock + 1n : ZK_DUEL_DEPLOY_BLOCK;
+  if (fromBlock > latest) {
+    return prev ?? { trackA: [], trackB: [], lastScannedBlock: latest };
+  }
+
+  const a = state.playerA.toLowerCase();
+  const b = state.playerB.toLowerCase();
+  const trackA = new Map<number, ZkBoardRow>();
+  const trackB = new Map<number, ZkBoardRow>();
+  for (const row of prev?.trackA ?? []) trackA.set(row.guessNumber, { ...row });
+  for (const row of prev?.trackB ?? []) trackB.set(row.guessNumber, { ...row });
+
+  for (let start = fromBlock; start <= latest; start += LOG_CHUNK + 1n) {
+    const end = start + LOG_CHUNK < latest ? start + LOG_CHUNK : latest;
+    const [guesses, feedbacks] = await Promise.all([
+      publicClient.getContractEvents({
+        address: ZK_DUEL_ADDRESS,
+        abi: WORDLE_DUEL_ABI,
+        eventName: "GuessSubmitted",
+        args: { matchId },
+        fromBlock: start,
+        toBlock: end,
+      }),
+      publicClient.getContractEvents({
+        address: ZK_DUEL_ADDRESS,
+        abi: WORDLE_DUEL_ABI,
+        eventName: "FeedbackSubmitted",
+        args: { matchId },
+        fromBlock: start,
+        toBlock: end,
+      }),
+    ]);
+
+    for (const log of guesses) {
+      const guesser = String(log.args.guesser).toLowerCase();
+      // A guesses on trackA, B on trackB.
+      const target = guesser === a ? trackA : guesser === b ? trackB : null;
+      if (!target) continue;
+      const n = Number(log.args.guessNumber);
+      const word = lettersToWord([...(log.args.guess as readonly number[])]);
+      target.set(n, {
+        guessNumber: n,
+        word,
+        tiles: target.get(n)?.tiles ?? null,
+      });
+    }
+    for (const log of feedbacks) {
+      const owner = String(log.args.owner).toLowerCase();
+      // The owner answers the OPPONENT's guesses: B answers trackA, A answers trackB.
+      const target = owner === b ? trackA : owner === a ? trackB : null;
+      if (!target) continue;
+      const n = Number(log.args.guessNumber);
+      const tiles = unpackFeedback(Number(log.args.feedback));
+      target.set(n, { guessNumber: n, word: target.get(n)?.word ?? "", tiles });
+    }
+  }
+
+  const sort = (m: Map<number, ZkBoardRow>) =>
+    [...m.values()].sort((x, y) => x.guessNumber - y.guessNumber);
+  return {
+    trackA: sort(trackA),
+    trackB: sort(trackB),
+    lastScannedBlock: latest,
+  };
+}
+
+function boardStorageKey(matchId: Hex): string {
+  return `wordcircle-zk-duel:board:${matchId.toLowerCase()}`;
+}
+
+export function loadZkBoard(matchId: Hex): ZkBoards | null {
+  try {
+    const raw = localStorage.getItem(boardStorageKey(matchId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as {
+      trackA: ZkBoardRow[];
+      trackB: ZkBoardRow[];
+      lastScannedBlock: string;
+    };
+    return {
+      trackA: parsed.trackA,
+      trackB: parsed.trackB,
+      lastScannedBlock: BigInt(parsed.lastScannedBlock),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function saveZkBoard(matchId: Hex, boards: ZkBoards) {
+  try {
+    localStorage.setItem(
+      boardStorageKey(matchId),
+      JSON.stringify({
+        trackA: boards.trackA,
+        trackB: boards.trackB,
+        lastScannedBlock: boards.lastScannedBlock.toString(),
+      }),
+    );
+  } catch {
+    // best-effort; a full/blocked localStorage just means a cold rescan later
+  }
 }
 
 export async function loadZkAnswers(): Promise<string[]> {
