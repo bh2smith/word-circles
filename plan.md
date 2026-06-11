@@ -4,17 +4,17 @@
 
 The `/zk-duel` UI only showed aggregate counts ("x green / y orange") because it
 rendered `getTrack` storage, which deliberately keeps only running tile totals
-plus the single *current* pending guess. Per-guess colors live only in events.
+plus the single _current_ pending guess. Per-guess colors live only in events.
 
-Both events are public (the ZK proof hides the *secret word*, not the feedback):
+Both events are public (the ZK proof hides the _secret word_, not the feedback):
 
 - `GuessSubmitted(bytes32 indexed matchId, address indexed guesser, uint8 guessNumber, uint8[5] guess)`
 - `FeedbackSubmitted(bytes32 indexed matchId, address indexed owner, uint8 guessNumber, uint16 feedback)`
 
 `feedback` is base-4 packed, LSB-first (2=green, 1=orange, 0=gray); `unpackFeedback` already exists.
 
-Track mapping: A guesses on trackA / B on trackB. The *owner* answers the
-*opponent's* track — B's `FeedbackSubmitted` grades trackA, A's grades trackB —
+Track mapping: A guesses on trackA / B on trackB. The _owner_ answers the
+_opponent's_ track — B's `FeedbackSubmitted` grades trackA, A's grades trackB —
 joined on `guessNumber`.
 
 ## Deployment (Gnosis, chainId 100)
