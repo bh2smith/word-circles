@@ -402,6 +402,71 @@ export async function fetchGroupMemberships(
   }
 }
 
+const trustedCache = new Map<string, string[]>();
+
+// Addresses the given avatar trusts (outgoing trust edges), lowercased and
+// deduped, via the Circles JSON-RPC `circles_query` against the
+// `V_Crc_TrustRelations` view. This is the same source the SDK's
+// `getAggregatedTrustRelations` pages over, but "My Circle" only needs outgoing
+// edges (`truster == avatar`), so one filtered query is enough — no need to
+// pull in the heavy @circles-sdk. The view already excludes expired/revoked
+// trust. The avatar itself is dropped (the caller adds it explicitly).
+// Best-effort and cached per avatar: returns [] on any error so the circle
+// scope just falls back to an empty board rather than erroring.
+export async function fetchTrustedAddresses(
+  address: string,
+): Promise<string[]> {
+  const key = address.toLowerCase();
+  const cached = trustedCache.get(key);
+  if (cached) return cached;
+  try {
+    const res = await fetch(CIRCLES_RPC, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "circles_query",
+        params: [
+          {
+            Namespace: "V_Crc",
+            Table: "TrustRelations",
+            Columns: ["truster", "trustee"],
+            Filter: [
+              {
+                Type: "FilterPredicate",
+                FilterType: "Equals",
+                Column: "truster",
+                Value: key,
+              },
+            ],
+            Order: [],
+            Limit: 1000,
+          },
+        ],
+      }),
+    });
+    if (!res.ok) return [];
+    const body: { result?: { columns?: string[]; rows?: unknown[][] } } =
+      await res.json();
+    const columns = body.result?.columns ?? [];
+    const rows = body.result?.rows ?? [];
+    const trusteeIdx = columns.indexOf("trustee");
+    if (trusteeIdx === -1) return [];
+    const trusted = new Set<string>();
+    for (const row of rows) {
+      const trustee = row[trusteeIdx];
+      if (typeof trustee === "string") trusted.add(trustee.toLowerCase());
+    }
+    trusted.delete(key);
+    const result = [...trusted];
+    trustedCache.set(key, result);
+    return result;
+  } catch {
+    return [];
+  }
+}
+
 export async function fetchCirclesProfiles(
   addresses: string[],
 ): Promise<Map<string, CirclesProfile>> {

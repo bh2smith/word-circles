@@ -1,10 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   CirclesProfile,
   circlesProfileUrl,
   fetchCirclesProfiles,
+  fetchTrustedAddresses,
+  getConnectedAddress,
+  isMiniappMode,
+  subscribeWallet,
 } from "@/lib/circles";
 import type { LeaderboardEntry, DailyResult } from "@/lib/api";
 import { api } from "@/lib/api/client";
@@ -14,7 +18,17 @@ function truncateAddress(addr: string): string {
   return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
 }
 
+// Shared pill-toggle styling for the Today/All-Time and Global/My-Circle rows.
+function pillClass(active: boolean): string {
+  return `flex-1 py-1.5 rounded-full text-sm font-semibold transition-colors ${
+    active
+      ? "bg-primary text-primary-foreground shadow-sm"
+      : "bg-surface-2 text-muted hover:text-foreground"
+  }`;
+}
+
 type Tab = "overall" | "daily";
+type Scope = "global" | "circle";
 
 interface LeaderboardProps {
   open: boolean;
@@ -24,90 +38,164 @@ interface LeaderboardProps {
 
 export function LeaderboardPanel({ gameId }: { gameId: number | null }) {
   const [tab, setTab] = useState<Tab>("daily");
+  const [scope, setScope] = useState<Scope>("global");
   const [overall, setOverall] = useState<LeaderboardEntry[]>([]);
   const [daily, setDaily] = useState<DailyResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [profiles, setProfiles] = useState<Map<string, CirclesProfile>>(
     new Map(),
   );
+  const [wallet, setWallet] = useState<string | null>(getConnectedAddress());
+  // Bumped on every load; a stale in-flight fetch checks this before committing
+  // its result, so a slow "My Circle" request can't clobber a newer selection.
+  const loadToken = useRef(0);
 
-  const loadProfiles = useCallback(async (addresses: string[]) => {
-    if (addresses.length === 0) return;
-    const map = await fetchCirclesProfiles(addresses);
-    setProfiles((prev) => {
-      const merged = new Map(prev);
-      map.forEach((v, k) => merged.set(k, v));
-      return merged;
-    });
-  }, []);
+  useEffect(() => subscribeWallet(setWallet), []);
 
-  const fetchOverall = useCallback(() => {
-    setLoading(true);
-    api
-      .GET("/api/leaderboard", { params: { query: { limit: 50 } } })
-      .then(({ data }) => {
-        const entries = data ?? [];
-        setOverall(entries);
-        loadProfiles(entries.map((e) => e.address));
-      })
-      .catch(() => setOverall([]))
-      .finally(() => setLoading(false));
-  }, [loadProfiles]);
+  // "My Circle" only means something inside the miniapp with a connected wallet.
+  const circleAvailable = isMiniappMode() && wallet !== null;
+  // A circle selection is only honored while it's available, so a wallet
+  // disconnect transparently falls back to the global board without mutating
+  // `scope` in an effect (and the selection reappears on reconnect).
+  const effectiveScope: Scope = circleAvailable ? scope : "global";
 
-  const fetchDaily = useCallback(() => {
-    if (gameId === null) return;
-    setLoading(true);
-    api
-      .GET("/api/leaderboard/daily", { params: { query: { gameId } } })
-      .then(({ data }) => {
-        const results = data ?? [];
-        setDaily(results);
-        loadProfiles(results.map((r) => r.address));
-      })
-      .catch(() => setDaily([]))
-      .finally(() => setLoading(false));
-  }, [gameId, loadProfiles]);
+  const loadProfiles = useCallback(
+    async (addresses: string[], token: number) => {
+      if (addresses.length === 0) return;
+      const map = await fetchCirclesProfiles(addresses);
+      if (token !== loadToken.current) return;
+      setProfiles((prev) => {
+        const merged = new Map(prev);
+        map.forEach((v, k) => merged.set(k, v));
+        return merged;
+      });
+    },
+    [],
+  );
+
+  // The circle = the connected user plus everyone they trust.
+  const circleAddresses = useCallback(async (): Promise<string[]> => {
+    if (!wallet) return [];
+    const trusted = await fetchTrustedAddresses(wallet);
+    return [...new Set([wallet.toLowerCase(), ...trusted])];
+  }, [wallet]);
 
   useEffect(() => {
-    // fetchOverall/fetchDaily set a loading flag synchronously before their
-    // async fetch; refetching on tab change is the intended behavior.
+    const token = ++loadToken.current;
+    // Flip to the loading state synchronously before the async fetch starts.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (tab === "overall") fetchOverall();
-    else fetchDaily();
-  }, [tab, fetchOverall, fetchDaily]);
+    setLoading(true);
+
+    const run = async (): Promise<void> => {
+      try {
+        if (tab === "daily") {
+          if (gameId === null) {
+            setDaily([]);
+            return;
+          }
+          let results: DailyResult[];
+          if (effectiveScope === "circle") {
+            const { data } = await api.POST("/api/leaderboard/daily/circle", {
+              body: { gameId, addresses: await circleAddresses() },
+            });
+            results = data ?? [];
+          } else {
+            const { data } = await api.GET("/api/leaderboard/daily", {
+              params: { query: { gameId } },
+            });
+            results = data ?? [];
+          }
+          if (token !== loadToken.current) return;
+          setDaily(results);
+          loadProfiles(
+            results.map((r) => r.address),
+            token,
+          );
+        } else {
+          let entries: LeaderboardEntry[];
+          if (effectiveScope === "circle") {
+            const { data } = await api.POST("/api/leaderboard/circle", {
+              body: { addresses: await circleAddresses(), limit: 50 },
+            });
+            entries = data ?? [];
+          } else {
+            const { data } = await api.GET("/api/leaderboard", {
+              params: { query: { limit: 50 } },
+            });
+            entries = data ?? [];
+          }
+          if (token !== loadToken.current) return;
+          setOverall(entries);
+          loadProfiles(
+            entries.map((e) => e.address),
+            token,
+          );
+        }
+      } catch {
+        if (token !== loadToken.current) return;
+        if (tab === "daily") setDaily([]);
+        else setOverall([]);
+      } finally {
+        if (token === loadToken.current) setLoading(false);
+      }
+    };
+
+    void run();
+  }, [tab, effectiveScope, gameId, circleAddresses, loadProfiles]);
+
+  const me = wallet?.toLowerCase() ?? null;
 
   return (
     <>
       <div className="flex gap-2 mb-4">
         <button
           onClick={() => setTab("daily")}
-          className={`flex-1 py-1.5 rounded-full text-sm font-semibold transition-colors ${
-            tab === "daily"
-              ? "bg-primary text-primary-foreground shadow-sm"
-              : "bg-surface-2 text-muted hover:text-foreground"
-          }`}
+          className={pillClass(tab === "daily")}
         >
           Today #{gameId}
         </button>
         <button
           onClick={() => setTab("overall")}
-          className={`flex-1 py-1.5 rounded-full text-sm font-semibold transition-colors ${
-            tab === "overall"
-              ? "bg-primary text-primary-foreground shadow-sm"
-              : "bg-surface-2 text-muted hover:text-foreground"
-          }`}
+          className={pillClass(tab === "overall")}
         >
           All Time
         </button>
       </div>
 
+      {circleAvailable && (
+        <div className="flex gap-2 mb-4">
+          <button
+            onClick={() => setScope("global")}
+            className={pillClass(scope === "global")}
+          >
+            Global
+          </button>
+          <button
+            onClick={() => setScope("circle")}
+            className={pillClass(scope === "circle")}
+          >
+            My Circle
+          </button>
+        </div>
+      )}
+
       <div className="flex-1 overflow-y-auto min-h-0">
         {loading ? (
           <p className="text-center text-muted py-8">Loading...</p>
         ) : tab === "daily" ? (
-          <DailyTable results={daily} profiles={profiles} />
+          <DailyTable
+            results={daily}
+            profiles={profiles}
+            me={me}
+            scope={effectiveScope}
+          />
         ) : (
-          <OverallTable entries={overall} profiles={profiles} />
+          <OverallTable
+            entries={overall}
+            profiles={profiles}
+            me={me}
+            scope={effectiveScope}
+          />
         )}
       </div>
     </>
@@ -187,12 +275,22 @@ function PlayerCell({
 function OverallTable({
   entries,
   profiles,
+  me,
+  scope,
 }: {
   entries: LeaderboardEntry[];
   profiles: Map<string, CirclesProfile>;
+  me: string | null;
+  scope: Scope;
 }) {
   if (entries.length === 0) {
-    return <p className="text-center text-muted py-8">No games played yet.</p>;
+    return (
+      <p className="text-center text-muted py-8">
+        {scope === "circle"
+          ? "No one in your circle has played yet. Spread the word!"
+          : "No games played yet."}
+      </p>
+    );
   }
   return (
     <table className="w-full text-sm">
@@ -207,7 +305,12 @@ function OverallTable({
       </thead>
       <tbody>
         {entries.map((entry, i) => (
-          <tr key={entry.address} className="border-t border-border">
+          <tr
+            key={entry.address}
+            className={`border-t border-border${
+              me && entry.address.toLowerCase() === me ? " bg-surface-2" : ""
+            }`}
+          >
             <td className="py-1.5 text-muted">{i + 1}</td>
             <PlayerCell address={entry.address} profiles={profiles} />
             <td className="py-1.5 text-right">{entry.wins}</td>
@@ -225,14 +328,20 @@ function OverallTable({
 function DailyTable({
   results,
   profiles,
+  me,
+  scope,
 }: {
   results: DailyResult[];
   profiles: Map<string, CirclesProfile>;
+  me: string | null;
+  scope: Scope;
 }) {
   if (results.length === 0) {
     return (
       <p className="text-center text-muted py-8">
-        No results for this game yet.
+        {scope === "circle"
+          ? "No one in your circle has played this game yet."
+          : "No results for this game yet."}
       </p>
     );
   }
@@ -248,7 +357,12 @@ function DailyTable({
       </thead>
       <tbody>
         {results.map((result, i) => (
-          <tr key={result.address} className="border-t border-border">
+          <tr
+            key={result.address}
+            className={`border-t border-border${
+              me && result.address.toLowerCase() === me ? " bg-surface-2" : ""
+            }`}
+          >
             <td className="py-1.5 text-muted">{i + 1}</td>
             <PlayerCell address={result.address} profiles={profiles} />
             <td className="py-1.5 text-right">{result.guesses}</td>
