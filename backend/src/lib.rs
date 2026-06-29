@@ -527,6 +527,59 @@ fn default_limit() -> u32 {
     20
 }
 
+/// Upper bound on circle size sent to the DB. The trust graph is unbounded, so
+/// cap the lookup to keep one super-connected avatar from fanning out into an
+/// arbitrarily large `ANY(...)` array. Mirrors the frontend cap.
+const MAX_CIRCLE_ADDRESSES: usize = 500;
+
+/// Decode caller-supplied `0x`-hex addresses to raw 20-byte form for a
+/// `BYTEA = ANY(...)` filter. Unlike `decode_address`, this never panics:
+/// malformed or wrong-length entries are skipped, the rest are lowercased,
+/// deduped, and capped at `MAX_CIRCLE_ADDRESSES`. Input is untrusted (it comes
+/// straight from the request body).
+fn decode_circle_addresses(addresses: &[String]) -> Vec<Vec<u8>> {
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    for addr in addresses {
+        let stripped = addr.strip_prefix("0x").unwrap_or(addr).to_lowercase();
+        let Ok(bytes) = hex::decode(&stripped) else {
+            continue;
+        };
+        if bytes.len() != 20 {
+            continue;
+        }
+        if seen.insert(bytes.clone()) {
+            out.push(bytes);
+            if out.len() >= MAX_CIRCLE_ADDRESSES {
+                break;
+            }
+        }
+    }
+    out
+}
+
+/// "My Circle" all-time leaderboard request: the connected user plus the
+/// addresses they trust. Body-encoded (not query params) so a large trust set
+/// can't blow past URL-length limits.
+#[derive(Deserialize, ToSchema)]
+struct CircleLeaderboardRequest {
+    /// 0x-prefixed player addresses. Malformed entries are ignored; capped at 500.
+    addresses: Vec<String>,
+    #[serde(default = "default_limit")]
+    limit: u32,
+    #[serde(default)]
+    offset: u32,
+}
+
+/// "My Circle" daily leaderboard request.
+#[derive(Deserialize, ToSchema)]
+struct CircleDailyRequest {
+    #[serde(rename = "gameId")]
+    game_id: u32,
+    /// 0x-prefixed player addresses. Malformed entries are ignored; capped at 500.
+    addresses: Vec<String>,
+}
+
 #[derive(Deserialize, IntoParams)]
 struct DailyQuery {
     #[serde(rename = "gameId")]
@@ -592,6 +645,88 @@ async fn get_daily_leaderboard<R: GameRepository>(
                 Json(
                     serde_json::to_value(ErrorResponse {
                         error: "Failed to fetch daily results".into(),
+                    })
+                    .unwrap(),
+                ),
+            )
+        }
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/leaderboard/circle",
+    request_body = CircleLeaderboardRequest,
+    responses(
+        (status = 200, description = "All-time leaderboard within the player's circle", body = Vec<LeaderboardEntry>),
+        (status = 500, description = "Internal error", body = ErrorResponse),
+    )
+)]
+async fn get_circle_leaderboard<R: GameRepository>(
+    State(state): State<Arc<AppState<R>>>,
+    Json(req): Json<CircleLeaderboardRequest>,
+) -> impl IntoResponse {
+    let addresses = decode_circle_addresses(&req.addresses);
+    debug!(
+        count = addresses.len(),
+        limit = req.limit,
+        offset = req.offset,
+        "POST /api/leaderboard/circle"
+    );
+    match state
+        .repo
+        .get_circle_leaderboard(&addresses, req.limit, req.offset)
+        .await
+    {
+        Ok(entries) => (StatusCode::OK, Json(serde_json::to_value(entries).unwrap())),
+        Err(e) => {
+            error!("Failed to fetch circle leaderboard: {e}");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(
+                    serde_json::to_value(ErrorResponse {
+                        error: "Failed to fetch circle leaderboard".into(),
+                    })
+                    .unwrap(),
+                ),
+            )
+        }
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/leaderboard/daily/circle",
+    request_body = CircleDailyRequest,
+    responses(
+        (status = 200, description = "Daily game results within the player's circle", body = Vec<DailyResult>),
+        (status = 500, description = "Internal error", body = ErrorResponse),
+    )
+)]
+async fn get_circle_daily_leaderboard<R: GameRepository>(
+    State(state): State<Arc<AppState<R>>>,
+    Json(req): Json<CircleDailyRequest>,
+) -> impl IntoResponse {
+    let addresses = decode_circle_addresses(&req.addresses);
+    let game_id = req.game_id.to_string();
+    debug!(
+        %game_id,
+        count = addresses.len(),
+        "POST /api/leaderboard/daily/circle"
+    );
+    match state
+        .repo
+        .get_circle_daily_results(&game_id, &addresses)
+        .await
+    {
+        Ok(results) => (StatusCode::OK, Json(serde_json::to_value(results).unwrap())),
+        Err(e) => {
+            error!("Failed to fetch circle daily results: {e}");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(
+                    serde_json::to_value(ErrorResponse {
+                        error: "Failed to fetch circle daily results".into(),
                     })
                     .unwrap(),
                 ),
@@ -1133,6 +1268,8 @@ async fn post_group_join<R: GameRepository>(
         post_guess,
         get_leaderboard,
         get_daily_leaderboard,
+        get_circle_leaderboard,
+        get_circle_daily_leaderboard,
         get_player_stats,
         get_pvp_game,
         get_player_games,
@@ -1149,6 +1286,8 @@ async fn post_group_join<R: GameRepository>(
         chain::LobbyConfig,
         LeaderboardEntry,
         DailyResult,
+        CircleLeaderboardRequest,
+        CircleDailyRequest,
         PlayerStatsResponse,
         PvpGameResponse,
         PvpPlayerStatus,
@@ -1187,6 +1326,11 @@ pub fn build_router<R: GameRepository>(
         .route("/api/group/join", post(post_group_join::<R>))
         .route("/api/leaderboard", get(get_leaderboard::<R>))
         .route("/api/leaderboard/daily", get(get_daily_leaderboard::<R>))
+        .route("/api/leaderboard/circle", post(get_circle_leaderboard::<R>))
+        .route(
+            "/api/leaderboard/daily/circle",
+            post(get_circle_daily_leaderboard::<R>),
+        )
         .route("/api/stats", get(get_player_stats::<R>))
         .with_state(state)
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))

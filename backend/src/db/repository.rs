@@ -76,6 +76,17 @@ pub trait GameRepository: Send + Sync + 'static {
         offset: u32,
     ) -> impl Future<Output = Result<Vec<LeaderboardEntry>, RepositoryError>> + Send;
 
+    /// Same ranking as `get_leaderboard`, restricted to the given player
+    /// addresses (raw 20-byte). Powers the "My Circle" leaderboard scope — the
+    /// connected user plus the addresses they trust. An empty slice yields an
+    /// empty result (no addresses → nothing to rank).
+    fn get_circle_leaderboard(
+        &self,
+        addresses: &[Vec<u8>],
+        limit: u32,
+        offset: u32,
+    ) -> impl Future<Output = Result<Vec<LeaderboardEntry>, RepositoryError>> + Send;
+
     /// All *completed* daily games for an address (won, or all guesses used),
     /// ordered by ascending game id. Source of truth for personal stats so
     /// they survive lost localStorage / device switches.
@@ -87,6 +98,15 @@ pub trait GameRepository: Send + Sync + 'static {
     fn get_daily_results(
         &self,
         game_id: &str,
+    ) -> impl Future<Output = Result<Vec<DailyResult>, RepositoryError>> + Send;
+
+    /// Same as `get_daily_results`, restricted to the given player addresses
+    /// (raw 20-byte). Powers the "My Circle" daily scope. An empty slice yields
+    /// an empty result.
+    fn get_circle_daily_results(
+        &self,
+        game_id: &str,
+        addresses: &[Vec<u8>],
     ) -> impl Future<Output = Result<Vec<DailyResult>, RepositoryError>> + Send;
 
     fn get_indexer_cursor(&self) -> impl Future<Output = Result<u64, RepositoryError>> + Send;

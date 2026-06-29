@@ -132,6 +132,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/leaderboard/circle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["get_circle_leaderboard"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/leaderboard/daily": {
         parameters: {
             query?: never;
@@ -142,6 +158,22 @@ export interface paths {
         get: operations["get_daily_leaderboard"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/leaderboard/daily/circle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["get_circle_daily_leaderboard"];
         delete?: never;
         options?: never;
         head?: never;
@@ -184,6 +216,26 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @description "My Circle" daily leaderboard request. */
+        CircleDailyRequest: {
+            /** @description 0x-prefixed player addresses. Malformed entries are ignored; capped at 500. */
+            addresses: string[];
+            /** Format: int32 */
+            gameId: number;
+        };
+        /**
+         * @description "My Circle" all-time leaderboard request: the connected user plus the
+         *     addresses they trust. Body-encoded (not query params) so a large trust set
+         *     can't blow past URL-length limits.
+         */
+        CircleLeaderboardRequest: {
+            /** @description 0x-prefixed player addresses. Malformed entries are ignored; capped at 500. */
+            addresses: string[];
+            /** Format: int32 */
+            limit?: number;
+            /** Format: int32 */
+            offset?: number;
+        };
         ContractConfig: {
             commitmentAddress: string;
             escrowAddress?: string | null;
@@ -699,6 +751,39 @@ export interface operations {
             };
         };
     };
+    get_circle_leaderboard: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CircleLeaderboardRequest"];
+            };
+        };
+        responses: {
+            /** @description All-time leaderboard within the player's circle */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaderboardEntry"][];
+                };
+            };
+            /** @description Internal error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     get_daily_leaderboard: {
         parameters: {
             query: {
@@ -711,6 +796,39 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Daily game results */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DailyResult"][];
+                };
+            };
+            /** @description Internal error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_circle_daily_leaderboard: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CircleDailyRequest"];
+            };
+        };
+        responses: {
+            /** @description Daily game results within the player's circle */
             200: {
                 headers: {
                     [name: string]: unknown;

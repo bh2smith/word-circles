@@ -427,6 +427,47 @@
         }
       }
     },
+    "/api/leaderboard/circle": {
+      "post": {
+        "tags": [],
+        "operationId": "get_circle_leaderboard",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CircleLeaderboardRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "All-time leaderboard within the player's circle",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LeaderboardEntry"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/leaderboard/daily": {
       "get": {
         "tags": [],
@@ -446,6 +487,47 @@
         "responses": {
           "200": {
             "description": "Daily game results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DailyResult"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/leaderboard/daily/circle": {
+      "post": {
+        "tags": [],
+        "operationId": "get_circle_daily_leaderboard",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CircleDailyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Daily game results within the player's circle",
             "content": {
               "application/json": {
                 "schema": {
@@ -530,6 +612,54 @@
   },
   "components": {
     "schemas": {
+      "CircleDailyRequest": {
+        "type": "object",
+        "description": "\"My Circle\" daily leaderboard request.",
+        "required": [
+          "gameId",
+          "addresses"
+        ],
+        "properties": {
+          "addresses": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "0x-prefixed player addresses. Malformed entries are ignored; capped at 500."
+          },
+          "gameId": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "CircleLeaderboardRequest": {
+        "type": "object",
+        "description": "\"My Circle\" all-time leaderboard request: the connected user plus the\naddresses they trust. Body-encoded (not query params) so a large trust set\ncan't blow past URL-length limits.",
+        "required": [
+          "addresses"
+        ],
+        "properties": {
+          "addresses": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "0x-prefixed player addresses. Malformed entries are ignored; capped at 500."
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "offset": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
       "ContractConfig": {
         "type": "object",
         "required": [

@@ -271,6 +271,55 @@ impl GameRepository for PostgresRepository {
             .collect())
     }
 
+    async fn get_circle_leaderboard(
+        &self,
+        addresses: &[Vec<u8>],
+        limit: u32,
+        offset: u32,
+    ) -> Result<Vec<LeaderboardEntry>, RepositoryError> {
+        // Identical ranking to `get_leaderboard`, scoped to the player's circle
+        // via `player_0 = ANY($1)`. No addresses → nothing to rank, so skip the
+        // query entirely (an empty `ANY` would just return zero rows anyway).
+        if addresses.is_empty() {
+            return Ok(vec![]);
+        }
+        let rows: Vec<(String, i64, i64, f64, i64)> = match sqlx::query_as(
+            "SELECT '0x' || encode(player_0, 'hex')                    AS address,
+                    COUNT(*) FILTER (WHERE won_2)                      AS wins,
+                    COUNT(*)                                           AS games_played,
+                    COALESCE(AVG(guesses_3) FILTER (WHERE won_2), 0.0)::float8 AS avg_guesses,
+                    MIN(block_number)                                  AS first_block
+             FROM game_recorded
+             WHERE player_0 = ANY($1)
+             GROUP BY player_0
+             ORDER BY wins DESC, avg_guesses ASC, games_played DESC, first_block ASC, address ASC
+             LIMIT $2 OFFSET $3",
+        )
+        .bind(addresses)
+        .bind(limit as i64)
+        .bind(offset as i64)
+        .fetch_all(&self.pool)
+        .await
+        {
+            Ok(rows) => rows,
+            Err(e) if is_undefined_table(&e) => {
+                tracing::debug!("game_recorded not yet created: {e}");
+                return Ok(vec![]);
+            }
+            Err(e) => return Err(RepositoryError::Internal(e.to_string())),
+        };
+
+        Ok(rows
+            .into_iter()
+            .map(|r| LeaderboardEntry {
+                address: r.0.trim().to_lowercase(),
+                wins: r.1 as u32,
+                games_played: r.2 as u32,
+                avg_guesses: r.3,
+            })
+            .collect())
+    }
+
     async fn get_daily_history(&self, address: &str) -> Result<Vec<DailyOutcome>, RepositoryError> {
         let bytes = decode_address(address);
         // A daily game is "completed" once it's won or all guesses are used —
@@ -324,6 +373,50 @@ impl GameRepository for PostgresRepository {
              ORDER BY won_2 DESC, guesses_3 ASC, block_number ASC, log_index ASC",
         )
         .bind(game_id)
+        .fetch_all(&self.pool)
+        .await
+        {
+            Ok(rows) => rows,
+            Err(e) if is_undefined_table(&e) => {
+                tracing::debug!("game_recorded not yet created: {e}");
+                return Ok(vec![]);
+            }
+            Err(e) => return Err(RepositoryError::Internal(e.to_string())),
+        };
+
+        Ok(rows
+            .into_iter()
+            .map(|r| DailyResult {
+                address: r.0.trim().to_lowercase(),
+                guesses: r.1 as u32,
+                solved: r.2,
+            })
+            .collect())
+    }
+
+    async fn get_circle_daily_results(
+        &self,
+        game_id: &str,
+        addresses: &[Vec<u8>],
+    ) -> Result<Vec<DailyResult>, RepositoryError> {
+        // Identical to `get_daily_results`, scoped to the player's circle.
+        if addresses.is_empty() {
+            return Ok(vec![]);
+        }
+        let game_id: i64 = game_id
+            .parse()
+            .map_err(|_| RepositoryError::Internal("invalid game_id".into()))?;
+
+        let rows: Vec<(String, i16, bool)> = match sqlx::query_as(
+            "SELECT '0x' || encode(player_0, 'hex') AS address,
+                    guesses_3::smallint AS guesses,
+                    won_2 AS solved
+             FROM game_recorded
+             WHERE gameid_1 = $1 AND player_0 = ANY($2)
+             ORDER BY won_2 DESC, guesses_3 ASC, block_number ASC, log_index ASC",
+        )
+        .bind(game_id)
+        .bind(addresses)
         .fetch_all(&self.pool)
         .await
         {
@@ -1020,5 +1113,79 @@ mod tests {
         let repo = PostgresRepository::from_pool(pool);
         assert!(repo.get_leaderboard(50, 0).await.unwrap().is_empty());
         assert!(repo.get_daily_results("1").await.unwrap().is_empty());
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn circle_leaderboard_filters_to_given_addresses(pool: PgPool) {
+        create_wc_stats(&pool).await;
+        let a = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        let b = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+        let c = "0xcccccccccccccccccccccccccccccccccccccccc";
+        // a: 2 wins (avg 4); b: 1 win (avg 2); c: 1 win (avg 1).
+        seed_game_recorded(&pool, a, 1, true, 3, 100, 0).await;
+        seed_game_recorded(&pool, a, 2, true, 5, 110, 0).await;
+        seed_game_recorded(&pool, b, 1, true, 2, 120, 0).await;
+        seed_game_recorded(&pool, c, 1, true, 1, 130, 0).await;
+
+        let repo = PostgresRepository::from_pool(pool);
+
+        // Circle = {a, c}; b is excluded entirely even though it outranks c
+        // globally on the avg-guesses tiebreak. Same ranking as the global
+        // board, just restricted to the set.
+        let circle = vec![decode_address(a), decode_address(c)];
+        let board = repo.get_circle_leaderboard(&circle, 50, 0).await.unwrap();
+        assert_eq!(board.len(), 2);
+        assert_eq!(board[0].address, a, "2 wins ranks first");
+        assert_eq!(board[0].wins, 2);
+        assert_eq!(board[0].avg_guesses, 4.0);
+        assert_eq!(board[1].address, c);
+        assert!(
+            board.iter().all(|e| e.address != b),
+            "b is outside the circle"
+        );
+
+        // Empty circle → empty board (short-circuits before the query).
+        assert!(
+            repo.get_circle_leaderboard(&[], 50, 0)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn circle_daily_filters_to_given_addresses(pool: PgPool) {
+        create_wc_stats(&pool).await;
+        let a = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        let b = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+        let c = "0xcccccccccccccccccccccccccccccccccccccccc";
+        // game 7: a solved in 3, b solved in 2 (ranks first globally), c lost.
+        seed_game_recorded(&pool, a, 7, true, 3, 100, 0).await;
+        seed_game_recorded(&pool, b, 7, true, 2, 110, 0).await;
+        seed_game_recorded(&pool, c, 7, false, 6, 120, 0).await;
+        // a also played game 8 — must not leak into game 7's results.
+        seed_game_recorded(&pool, a, 8, true, 1, 130, 0).await;
+
+        let repo = PostgresRepository::from_pool(pool);
+
+        let circle = vec![decode_address(a), decode_address(c)];
+        let results = repo.get_circle_daily_results("7", &circle).await.unwrap();
+        assert_eq!(results.len(), 2, "only game 7, only circle members");
+        assert_eq!(results[0].address, a, "solver before non-solver");
+        assert!(results[0].solved);
+        assert_eq!(results[1].address, c);
+        assert!(!results[1].solved);
+        assert!(
+            results.iter().all(|r| r.address != b),
+            "b is outside the circle"
+        );
+
+        // Empty circle → empty results.
+        assert!(
+            repo.get_circle_daily_results("7", &[])
+                .await
+                .unwrap()
+                .is_empty()
+        );
     }
 }
