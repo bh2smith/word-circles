@@ -175,7 +175,10 @@ export function LeaderboardPanel({ gameId }: { gameId: number | null }) {
           <button
             onClick={() => setScope("circle")}
             disabled={!circleAvailable}
-            className={pillClass(scope === "circle") + (circleAvailable ? "" : " opacity-50 cursor-not-allowed")}
+            className={
+              pillClass(scope === "circle") +
+              (circleAvailable ? "" : " opacity-50 cursor-not-allowed")
+            }
           >
             My Circle
           </button>
