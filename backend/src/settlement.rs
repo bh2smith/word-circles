@@ -339,12 +339,35 @@ pub async fn run_timeout_loop<R: GameRepository>(
     }
 }
 
+/// Parse a timestamp as the DB returns it. Postgres `TIMESTAMPTZ::text` (what
+/// `get_game_players` / `get_game` emit) looks like `2026-06-20 10:48:39.372663+00`
+/// — space separator, fractional seconds, `+00` offset. The old parser only
+/// accepted `2026-06-20T10:48:39Z`, so it failed on every real row: `is_expired`
+/// always returned false and abandoned games never timed out (so a game where one
+/// player solved and the other walked away sat unsettled forever). Accept the PG
+/// format first, then RFC3339, then the legacy form.
+fn parse_db_timestamp(s: &str) -> Option<chrono::NaiveDateTime> {
+    use chrono::{DateTime, NaiveDateTime};
+    if let Ok(dt) = DateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S%.f%#z") {
+        return Some(dt.naive_utc());
+    }
+    if let Ok(dt) = DateTime::parse_from_rfc3339(s) {
+        return Some(dt.naive_utc());
+    }
+    NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%SZ").ok()
+}
+
 fn is_expired(timestamp: &str, timeout_secs: u32, now: &chrono::NaiveDateTime) -> bool {
-    let Ok(ts) = chrono::NaiveDateTime::parse_from_str(timestamp, "%Y-%m-%dT%H:%M:%SZ") else {
+    let Some(ts) = parse_db_timestamp(timestamp) else {
+        // Don't silently swallow — an unparseable timestamp is exactly what hid
+        // this bug (the timeout path was dead for every real DB row).
+        tracing::warn!(
+            timestamp,
+            "is_expired: unparseable timestamp, treating as not expired"
+        );
         return false;
     };
-    let elapsed = now.signed_duration_since(ts);
-    elapsed.num_seconds() > timeout_secs as i64
+    now.signed_duration_since(ts).num_seconds() > timeout_secs as i64
 }
 
 #[cfg(test)]
@@ -597,5 +620,27 @@ mod tests {
             guess(r#"["correct","correct","correct","correct","correct"]"#),
         ];
         assert_eq!(tally_tiles(&guesses), tiles(6, 2));
+    }
+
+    #[test]
+    fn is_expired_parses_postgres_timestamptz() {
+        let now = chrono::NaiveDate::from_ymd_opt(2026, 6, 30)
+            .unwrap()
+            .and_hms_opt(0, 0, 0)
+            .unwrap();
+        // The real Postgres TIMESTAMPTZ::text format — what get_game_players
+        // returns and what the old parser silently failed on.
+        assert!(
+            is_expired("2026-06-20 10:48:39.372663+00", 10800, &now),
+            "10 days old must exceed the 3h timeout"
+        );
+        // A timestamptz without fractional seconds still parses.
+        assert!(is_expired("2026-06-20 10:48:39+00", 10800, &now));
+        // Within the window is NOT expired.
+        assert!(!is_expired("2026-06-29 23:00:00+00", 10800, &now));
+        // Legacy / RFC3339 forms still work.
+        assert!(is_expired("2026-06-20T10:48:39Z", 10800, &now));
+        // Garbage is treated as not expired (and logs a warning).
+        assert!(!is_expired("not-a-timestamp", 10800, &now));
     }
 }
