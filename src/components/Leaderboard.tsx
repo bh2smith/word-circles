@@ -52,8 +52,10 @@ export function LeaderboardPanel({ gameId }: { gameId: number | null }) {
 
   useEffect(() => subscribeWallet(setWallet), []);
 
-  // "My Circle" only means something inside the miniapp with a connected wallet.
-  const circleAvailable = isMiniappMode() && wallet !== null;
+  // "My Circle" only means something when you have a connected wallet.
+  // The toggle should always display (so users see it in standalone mode),
+  // but "My Circle" is only effective when circleAvailable.
+  const circleAvailable = wallet !== null && isMiniappMode();
   // A circle selection is only honored while it's available, so a wallet
   // disconnect transparently falls back to the global board without mutating
   // `scope` in an effect (and the selection reappears on reconnect).
@@ -162,7 +164,7 @@ export function LeaderboardPanel({ gameId }: { gameId: number | null }) {
         </button>
       </div>
 
-      {circleAvailable && (
+      {true && (
         <div className="flex gap-2 mb-4">
           <button
             onClick={() => setScope("global")}
@@ -172,7 +174,11 @@ export function LeaderboardPanel({ gameId }: { gameId: number | null }) {
           </button>
           <button
             onClick={() => setScope("circle")}
-            className={pillClass(scope === "circle")}
+            disabled={!circleAvailable}
+            className={
+              pillClass(scope === "circle") +
+              (circleAvailable ? "" : " opacity-50 cursor-not-allowed")
+            }
           >
             My Circle
           </button>
