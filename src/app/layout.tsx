@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { DM_Sans } from "next/font/google";
 import "./globals.css";
 import ModeNav from "@/components/ModeNav";
+import CirclesLoginChip from "@/components/CirclesLoginChip";
 
 // DM Sans is the official Circles brand typeface (shipped in their media-kit).
 const dmSans = DM_Sans({
@@ -23,6 +24,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${dmSans.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col bg-background text-foreground">
+        <CirclesLoginChip />
         <ModeNav />
         {children}
       </body>

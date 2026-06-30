@@ -17,6 +17,7 @@ import { WORD_LENGTH } from "@/lib/game";
 import { api } from "@/lib/api/client";
 import {
   isMiniappMode,
+  isConnected,
   initCircles,
   submitGameResult,
   getConnectedAddress,
@@ -367,21 +368,19 @@ export default function Game() {
       <div className="flex flex-col items-center gap-5 w-full max-w-md mx-auto px-4">
         <Wordmark />
         <p className="text-muted text-center">
-          {standalone
-            ? "Word Circles runs as a mini-app inside the Circles app."
-            : "Connect your Circles wallet to play today's word."}
+          Log in with your Circles account to play today&apos;s word and record
+          your result.
         </p>
-        {standalone ? (
+        <ConnectAccount label="Login with Circles" />
+        {standalone && (
           <a
             href={CIRCLES_MINIAPP_URL}
             target="_blank"
             rel="noopener noreferrer"
-            className="px-6 py-2.5 rounded-full bg-primary text-primary-foreground font-bold shadow-sm transition hover:opacity-90 active:scale-95"
+            className="text-sm text-muted underline hover:text-foreground"
           >
-            Open in Circles
+            or open in the Circles app
           </a>
-        ) : (
-          <ConnectAccount />
         )}
         <div className="w-full bg-surface border border-border rounded-2xl p-6 max-h-[70vh] flex flex-col shadow-sm">
           <h2 className="text-center text-lg font-bold mb-4 uppercase tracking-wide text-muted">
@@ -539,7 +538,7 @@ export default function Game() {
         gameOver={status !== "playing"}
         won={status === "won"}
         answer={answer}
-        canRecord={isMiniappMode()}
+        canRecord={isConnected()}
         recordState={
           recordState === "idle" && alreadyPlayed ? "recorded" : recordState
         }

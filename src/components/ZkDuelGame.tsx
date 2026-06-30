@@ -423,16 +423,18 @@ export default function ZkDuelGame() {
       <Screen>
         {title}
         <p className="text-muted">
-          {standalone
-            ? "ZK duels run inside the Circles app wallet."
-            : "Connect your Circles wallet to create or join a duel."}
+          Log in with your Circles account to create or join a duel.
         </p>
-        {standalone ? (
-          <a className="primary-button" href={CIRCLES_MINIAPP_URL}>
-            Open in Circles
+        <ConnectAccount label="Login with Circles" />
+        {standalone && (
+          <a
+            className="text-sm text-muted underline hover:text-foreground"
+            href={CIRCLES_MINIAPP_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            or open in the Circles app
           </a>
-        ) : (
-          <ConnectAccount />
         )}
       </Screen>
     );
