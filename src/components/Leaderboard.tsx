@@ -7,7 +7,6 @@ import {
   fetchCirclesProfiles,
   fetchTrustedAddresses,
   getConnectedAddress,
-  isMiniappMode,
   subscribeWallet,
 } from "@/lib/circles";
 import type { LeaderboardEntry, DailyResult } from "@/lib/api";
@@ -52,10 +51,9 @@ export function LeaderboardPanel({ gameId }: { gameId: number | null }) {
 
   useEffect(() => subscribeWallet(setWallet), []);
 
-  // "My Circle" only means something when you have a connected wallet.
-  // The toggle should always display (so users see it in standalone mode),
-  // but "My Circle" is only effective when circleAvailable.
-  const circleAvailable = wallet !== null && isMiniappMode();
+  // "My Circle" is available when you have a connected wallet, in either miniapp
+  // or standalone mode. The backend endpoints work from both contexts.
+  const circleAvailable = wallet !== null;
   // A circle selection is only honored while it's available, so a wallet
   // disconnect transparently falls back to the global board without mutating
   // `scope` in an effect (and the selection reappears on reconnect).
