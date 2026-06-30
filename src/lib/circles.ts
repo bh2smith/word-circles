@@ -2,10 +2,11 @@
 
 import {
   isMiniappMode,
-  onWalletChange,
+  onWalletChange as sdkOnWalletChange,
   requestCreateAccount,
-  sendTransactions,
-  signMessage,
+  sendTransactions as sdkSendTransactions,
+  signMessage as sdkSignMessage,
+  type SignResult,
   type Transaction,
 } from "@aboutcircles/miniapp-sdk";
 import { getAddress } from "viem";
@@ -20,6 +21,13 @@ import {
   HUB_ADDRESS,
   staticToDemurrage,
 } from "./contract";
+import {
+  connect as connectorConnect,
+  disconnect as connectorDisconnect,
+  onConnectorWalletChange,
+  sendTransactions as connectorSendTransactions,
+  signMessage as connectorSignMessage,
+} from "./crcConnector";
 import { api } from "./api/client";
 
 export { isMiniappMode };
@@ -70,20 +78,60 @@ const listeners: Set<WalletListener> = new Set();
 let currentAddress: string | null = null;
 let initialized = false;
 
+// Standalone logins are remembered across reloads so a returning web visitor
+// stays signed in. Embedded mode never persists — the host owns identity there.
+const STORAGE_KEY = "word-circles:circles-address";
+
+// Single funnel for connection changes from whichever transport is active.
+// Normalizes to a checksum address, persists the standalone session, and
+// notifies subscribers. No-ops when the address is unchanged.
+function setCurrentAddress(raw: string | null): void {
+  let next: string | null;
+  try {
+    next = raw ? getAddress(raw) : null;
+  } catch {
+    next = null;
+  }
+  if (next === currentAddress) return;
+  currentAddress = next;
+  if (!isMiniappMode()) persistAddress(next);
+  listeners.forEach((fn) => fn(next));
+}
+
+function persistAddress(address: string | null): void {
+  try {
+    if (address) localStorage.setItem(STORAGE_KEY, address);
+    else localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // ignore private-mode / quota failures
+  }
+}
+
+function restoreStoredAddress(): void {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) setCurrentAddress(stored);
+  } catch {
+    // ignore private-mode / quota failures
+  }
+}
+
+/**
+ * Wire up the active Circles transport. Embedded in the Circles host app we
+ * track the miniapp SDK's wallet; standalone on the open web we drive the
+ * `crc-signin` connector iframe and remember the last login across reloads.
+ */
 export function initCircles() {
   if (initialized) return;
   initialized = true;
 
-  if (!isMiniappMode()) return;
+  if (isMiniappMode()) {
+    sdkOnWalletChange((address) => setCurrentAddress(address));
+    return;
+  }
 
-  onWalletChange((address: string | null) => {
-    try {
-      currentAddress = address ? getAddress(address) : null;
-    } catch {
-      currentAddress = null;
-    }
-    listeners.forEach((fn) => fn(currentAddress));
-  });
+  onConnectorWalletChange((address) => setCurrentAddress(address));
+  restoreStoredAddress();
 }
 
 export function subscribeWallet(fn: WalletListener): () => void {
@@ -96,6 +144,11 @@ export function getConnectedAddress(): string | null {
   return currentAddress;
 }
 
+/** True whenever a wallet is attached — embedded host or standalone login. */
+export function isConnected(): boolean {
+  return currentAddress !== null;
+}
+
 // Ask the host to open its passkey-backed "create or connect account" flow. The
 // host owns account creation, login, and (for users arriving via a native invite
 // link) the invitation flow — we just trigger it. MUST be called straight from a
@@ -106,6 +159,35 @@ export function getConnectedAddress(): string | null {
 export async function connectAccount(): Promise<string> {
   const { address } = await requestCreateAccount();
   return getAddress(address);
+}
+
+/**
+ * Unified login entry used by the UI. Embedded → the host's passkey flow;
+ * standalone → the crc-signin connector. Resolves with the address (null if a
+ * standalone user dismisses the connector); the host flow rejects on cancel.
+ */
+export function connect(): Promise<string | null> {
+  return isMiniappMode() ? connectAccount() : connectorConnect();
+}
+
+/** Log out of a standalone session. No-op when embedded (the host owns identity). */
+export function disconnect(): void {
+  if (isMiniappMode()) return;
+  connectorDisconnect();
+}
+
+// Route a transaction batch through whichever transport is active.
+function sendTransactions(transactions: Transaction[]): Promise<string[]> {
+  return isMiniappMode()
+    ? sdkSendTransactions(transactions)
+    : connectorSendTransactions(transactions);
+}
+
+// Route a message signature through whichever transport is active.
+function signMessage(message: string): Promise<SignResult> {
+  return isMiniappMode()
+    ? sdkSignMessage(message)
+    : connectorSignMessage(message);
 }
 
 export async function submitGameResult(
