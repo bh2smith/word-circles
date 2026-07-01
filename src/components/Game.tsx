@@ -235,6 +235,11 @@ export default function Game() {
 
   const submitGuess = useCallback(async () => {
     if (
+      // Require a login even on the physical keyboard: the render gate below
+      // hides the board when logged out, but this window keydown listener is
+      // still live (its effect runs before the early return), so without this
+      // check a logged-out standalone visitor could submit anonymous guesses.
+      !walletAddress ||
       status !== "playing" ||
       gameId === null ||
       currentGuess.length !== WORD_LENGTH ||
@@ -249,7 +254,7 @@ export default function Game() {
           guess: currentGuess,
           gameId: String(gameId),
           guessNumber: guesses.length,
-          player: getConnectedAddress() ?? undefined,
+          player: walletAddress,
         },
       });
 
@@ -302,6 +307,7 @@ export default function Game() {
       setSubmitting(false);
     }
   }, [
+    walletAddress,
     currentGuess,
     gameId,
     guesses,
