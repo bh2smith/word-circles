@@ -111,16 +111,16 @@ async fn get_game_is_idempotent(pool: PgPool) {
     assert_eq!(body1["gameId"], body2["gameId"]);
 }
 
+// A guess is authenticated: the daily path requires a player. Use a default one
+// so tests exercise the happy path; the playerless case is covered explicitly by
+// guess_without_player_returns_400.
 fn guess_request(game_id: u64, guess: &str, guess_number: u32) -> Request<Body> {
-    let payload = serde_json::json!({
-        "guess": guess,
-        "gameId": game_id.to_string(),
-        "guessNumber": guess_number,
-    });
-    Request::post("/api/guess")
-        .header("content-type", "application/json")
-        .body(Body::from(payload.to_string()))
-        .unwrap()
+    guess_request_with_player(
+        game_id,
+        guess,
+        guess_number,
+        "0xdddddddddddddddddddddddddddddddddddddddd",
+    )
 }
 
 fn guess_request_with_player(
@@ -166,6 +166,41 @@ async fn valid_guess_returns_results(pool: PgPool) {
     assert_eq!(body["results"].as_array().unwrap().len(), 5);
     assert!(body["won"].is_boolean());
     assert!(body["gameOver"].is_boolean());
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn guess_without_player_returns_400(pool: PgPool) {
+    let app = app(pool);
+
+    let game_body = json_body(
+        app.clone()
+            .oneshot(Request::get("/api/game").body(Body::empty()).unwrap())
+            .await
+            .unwrap(),
+    )
+    .await;
+    let game_id = game_body["gameId"].as_u64().unwrap();
+
+    // A valid word but no player: must be rejected, not evaluated, so a
+    // logged-out visitor can't solve the day's word off the record.
+    let payload = serde_json::json!({
+        "guess": "crane",
+        "gameId": game_id.to_string(),
+        "guessNumber": 0,
+    });
+    let resp = app
+        .oneshot(
+            Request::post("/api/guess")
+                .header("content-type", "application/json")
+                .body(Body::from(payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+    let body = json_body(resp).await;
+    assert_eq!(body["error"], "Player address required");
 }
 
 #[sqlx::test(migrations = "./migrations")]

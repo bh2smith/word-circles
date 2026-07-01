@@ -426,34 +426,40 @@ async fn post_guess<R: GameRepository>(
         );
     }
 
-    // Daily game path
+    // Daily game path. A login is required to play, mirroring the PvP guard and
+    // the frontend's connected-wallet gate: without it we'd hand guess feedback
+    // (and the answer on the final guess) to an anonymous caller, letting a
+    // logged-out visitor solve the day's word off the record.
+    let address = match &req.player {
+        Some(a) => a,
+        None => return err_response(StatusCode::BAD_REQUEST, "Player address required"),
+    };
+
     let answer = game::get_answer_by_index(game_record.word_index);
     let results = game::evaluate_guess(&normalized, answer);
     let won = results.iter().all(|r| *r == game::LetterResult::Correct);
     let game_over = won || req.guess_number >= game::MAX_GUESSES as u32 - 1;
 
-    if let Some(ref address) = req.player {
-        if let Ok(player) = state.repo.get_or_create_player(address).await {
-            let results_json = serde_json::to_string(&results).unwrap_or_default();
-            let guess_record = GuessRecord {
-                id: None,
-                game_id: game_id_str.clone(),
-                player_id: player.id,
-                guess_number: req.guess_number,
-                word: normalized.clone(),
-                results: results_json,
-                is_correct: won,
-                created_at: None,
-            };
-            if let Err(e) = state.repo.record_guess(&guess_record).await {
-                // A stale-state client (lost localStorage after some guesses
-                // were already recorded) will collide on UNIQUE(game_id,
-                // player_id, guess_number). The evaluation itself is still
-                // correct, so log and let the response through rather than
-                // soft-bricking the player. New clients hydrate from
-                // GET /api/game?player= and won't hit this path.
-                tracing::warn!("Failed to record guess for game {game_id_str}: {e}");
-            }
+    if let Ok(player) = state.repo.get_or_create_player(address).await {
+        let results_json = serde_json::to_string(&results).unwrap_or_default();
+        let guess_record = GuessRecord {
+            id: None,
+            game_id: game_id_str.clone(),
+            player_id: player.id,
+            guess_number: req.guess_number,
+            word: normalized.clone(),
+            results: results_json,
+            is_correct: won,
+            created_at: None,
+        };
+        if let Err(e) = state.repo.record_guess(&guess_record).await {
+            // A stale-state client (lost localStorage after some guesses
+            // were already recorded) will collide on UNIQUE(game_id,
+            // player_id, guess_number). The evaluation itself is still
+            // correct, so log and let the response through rather than
+            // soft-bricking the player. New clients hydrate from
+            // GET /api/game?player= and won't hit this path.
+            tracing::warn!("Failed to record guess for game {game_id_str}: {e}");
         }
     }
 
