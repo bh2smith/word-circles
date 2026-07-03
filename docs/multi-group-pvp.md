@@ -138,9 +138,12 @@ cast send <GROUP_ADDRESS> "setService(address)" <RESOLVER_EOA> \
 
 Then set `GROUP_ADDRESS` to that group (usually the first `PVP_LOBBIES` entry).
 
-> A player still needs **personal CRC** to stake even after joining (the lift
-> mints the wrapper from their CRC; `NoCirclesError` messages this). The prompt
-> tells empty wallets to claim daily CRC.
+> A player still needs **Circles collateral** to stake even after joining: the
+> lift assembles the wrapper from the lobby group's own tokens or any tokens
+> whose avatar the group trusts — personal CRC or another group's tokens (e.g.
+> Gnosis gCRC). For cross-group collateral the lobby group must **trust the
+> collateral group's avatar** on-chain, or `groupMint` reverts. `NoCirclesError`
+> messages the shortfall; the prompt tells empty wallets to claim daily CRC.
 
 ## Funding the bot
 
