@@ -16,9 +16,9 @@ import {
   encodeUnwrap,
   encodeWrap,
   getErc20Balance,
-  getPersonalCrcBalance,
   getTokenAvatar,
   HUB_ADDRESS,
+  isTrusted,
   staticToDemurrage,
 } from "./contract";
 import {
@@ -200,9 +200,10 @@ export async function submitGameResult(
 }
 
 // Thrown when the player can't be lifted into the stake token because their
-// personal CRC — un-wrapped (ERC-1155) plus anything held as a wrapped ERC-20 —
-// is below the demurraged collateral the groupMint needs. Carries both amounts
-// so the UI can show the shortfall in CRC units.
+// usable Circles collateral — the target group's own tokens plus tokens of
+// avatars the group trusts, un-wrapped (ERC-1155) or wrapped (ERC-20) — is
+// below the demurraged amount the lift needs. Carries both amounts so the UI
+// can show the shortfall in CRC units.
 export class NoCirclesError extends Error {
   readonly available: bigint;
   readonly required: bigint;
@@ -220,15 +221,23 @@ export interface JoinPvpParams {
   approveData: string;
   joinData: string;
   // Player address and static stake. When provided and the player holds < stake
-  // of the group token (s-gCRC), we prepend groupMint + wrap to mint it from their
-  // personal CRC. Omit to skip the lift (assumes the player already holds enough).
+  // of the group token (s-gCRC), we prepend a lift that assembles it from the
+  // Circles collateral they do hold (see joinPvpGame). Omit to skip the lift
+  // (assumes the player already holds enough).
   player?: string;
   stake?: bigint;
 }
 
-export interface WrappedPersonalCrc {
-  // The ERC-20 wrapper contract to call unwrap() on.
-  token: string;
+// One Circles balance the lift can draw on: `avatar`'s tokens held by the
+// player, either directly as ERC-1155 in the Hub (token = null) or inside an
+// ERC-20 wrapper to unwrap first.
+export interface LiftSource {
+  // The avatar whose Circles these are — the ERC-1155 token id and, when the
+  // target group has to mint, the groupMint collateral address. Lowercase.
+  avatar: string;
+  // The ERC-20 wrapper contract to call unwrap() on, or null when the balance
+  // already sits un-wrapped in the Hub.
+  token: string | null;
   // true = inflationary/static wrapper (unwrap amount is static), false =
   // demurraged wrapper (unwrap amount is demurraged, credited 1:1).
   inflationary: boolean;
@@ -247,15 +256,13 @@ interface TokenBalanceRow {
   isGroup: boolean;
 }
 
-// The player's OWN wrapped personal CRC (ERC-20 wrappers of their own avatar),
-// via the Circles JSON-RPC `circles_getTokenBalances`. groupMint can only draw
-// un-wrapped ERC-1155 personal CRC, so when a player's CRC is wrapped we unwrap
-// just enough of these first. Group tokens and other avatars' tokens are filtered
-// out. Best-effort: returns [] on any error, so the caller falls back to "no
-// circles" rather than erroring.
-export async function fetchWrappedPersonalCrc(
-  player: string,
-): Promise<WrappedPersonalCrc[]> {
+// Every Circles balance the player holds, via the Circles JSON-RPC
+// `circles_getTokenBalances`: ERC-1155 Hub balances (personal or group CRC) and
+// v2 ERC-20 wrappers. Only v1 tokens (ERC-20 but not wrapped, so nothing to
+// unwrap) are dropped; trust filtering is the caller's job. Best-effort:
+// returns [] on any error, so the caller falls back to "no circles" rather
+// than erroring.
+export async function fetchLiftSources(player: string): Promise<LiftSource[]> {
   try {
     const res = await fetch(CIRCLES_RPC, {
       method: "POST",
@@ -269,22 +276,17 @@ export async function fetchWrappedPersonalCrc(
     });
     if (!res.ok) return [];
     const body: { result?: TokenBalanceRow[] } = await res.json();
-    const owner = player.toLowerCase();
-    const out: WrappedPersonalCrc[] = [];
+    const out: LiftSource[] = [];
     for (const row of body.result ?? []) {
-      if (
-        row.isErc20 &&
-        row.isWrapped &&
-        !row.isGroup &&
-        row.tokenOwner?.toLowerCase() === owner
-      ) {
-        out.push({
-          token: getAddress(row.tokenAddress),
-          inflationary: row.isInflationary,
-          demurraged: BigInt(row.attoCircles),
-          staticAmount: BigInt(row.staticAttoCircles),
-        });
-      }
+      if (!row.tokenOwner) continue;
+      if (row.isErc20 && !row.isWrapped) continue; // v1 token, can't unwrap
+      out.push({
+        avatar: row.tokenOwner.toLowerCase(),
+        token: row.isErc20 ? getAddress(row.tokenAddress) : null,
+        inflationary: row.isInflationary,
+        demurraged: BigInt(row.attoCircles),
+        staticAmount: BigInt(row.staticAttoCircles),
+      });
     }
     return out;
   } catch {
@@ -292,55 +294,81 @@ export async function fetchWrappedPersonalCrc(
   }
 }
 
-// Decide which wrapped tokens to unwrap (and how much of each) to free `need`
-// demurraged CRC of ERC-1155 collateral. Demurraged wrappers go first because
+export interface LiftPlan {
+  // unwrap() calls to free wrapped balances back into the Hub, in order.
+  unwraps: { token: string; amount: bigint }[];
+  // Parallel arrays for hub.groupMint — one entry per collateral avatar drawn
+  // on. Both empty when the sources were all the target group's own tokens.
+  mintOwners: string[];
+  mintAmounts: bigint[];
+}
+
+// Decide how to assemble `need` demurraged CRC of the target `group`'s
+// ERC-1155 tokens (which the final wrap converts into the stake ERC-20) from
+// the player's balances. Sources are drained in cheapest-first order: the
+// group's own ERC-1155 (no tx at all), then trusted ERC-1155 (mint only), then
+// wrapped balances — demurraged wrappers before inflationary ones because
 // unwrap() is exact there (1:1 in demurraged units). Inflationary wrappers are
 // sized from their own static/demurraged ratio with a 1-wei cushion (unwrap
-// floors the credited amount), capped at the balance; over-unwrapping only leaves
-// the player spare un-wrapped CRC. Returns null if the wrapped balances, summed,
-// still can't cover `need`.
-export function planUnwraps(
+// floors the credited amount), capped at the balance; over-unwrapping only
+// leaves the player spare un-wrapped CRC. Anything not owned by `group`
+// becomes groupMint collateral. Returns null if the sources, summed, can't
+// cover `need`. `group` and source avatars must be lowercase.
+export function planLift(
   need: bigint,
-  wrapped: WrappedPersonalCrc[],
-): { token: string; amount: bigint }[] | null {
-  const ordered = [...wrapped].sort(
-    (a, b) => Number(a.inflationary) - Number(b.inflationary),
-  );
-  const plan: { token: string; amount: bigint }[] = [];
+  group: string,
+  sources: LiftSource[],
+): LiftPlan | null {
+  const tier = (s: LiftSource) =>
+    s.token ? (s.inflationary ? 3 : 2) : s.avatar === group ? 0 : 1;
+  const ordered = [...sources].sort((a, b) => tier(a) - tier(b));
+  const unwraps: { token: string; amount: bigint }[] = [];
+  const mint = new Map<string, bigint>();
   let remaining = need;
-  for (const w of ordered) {
+  for (const s of ordered) {
     if (remaining <= 0n) break;
-    if (w.demurraged <= 0n) continue;
-    if (!w.inflationary) {
-      const take = remaining < w.demurraged ? remaining : w.demurraged;
-      plan.push({ token: w.token, amount: take });
-      remaining -= take;
-    } else if (w.demurraged <= remaining) {
-      plan.push({ token: w.token, amount: w.staticAmount });
-      remaining -= w.demurraged;
-    } else {
-      let take =
-        (remaining * w.staticAmount + w.demurraged - 1n) / w.demurraged + 1n;
-      if (take > w.staticAmount) take = w.staticAmount;
-      plan.push({ token: w.token, amount: take });
-      remaining = 0n;
+    if (s.demurraged <= 0n) continue;
+    const take = remaining < s.demurraged ? remaining : s.demurraged;
+    if (s.token) {
+      if (!s.inflationary) {
+        unwraps.push({ token: s.token, amount: take });
+      } else if (take === s.demurraged) {
+        unwraps.push({ token: s.token, amount: s.staticAmount });
+      } else {
+        let amount =
+          (take * s.staticAmount + s.demurraged - 1n) / s.demurraged + 1n;
+        if (amount > s.staticAmount) amount = s.staticAmount;
+        unwraps.push({ token: s.token, amount });
+      }
     }
+    if (s.avatar !== group)
+      mint.set(s.avatar, (mint.get(s.avatar) ?? 0n) + take);
+    remaining -= take;
   }
-  return remaining <= 0n ? plan : null;
+  if (remaining > 0n) return null;
+  return {
+    unwraps,
+    mintOwners: [...mint.keys()],
+    mintAmounts: [...mint.values()],
+  };
 }
 
 // Enter PvP matchmaking in a single batched submission. If the player lacks the
-// stake token, the batch is [unwrap?, groupMint, wrap, approve, join]; otherwise
-// just [approve, join] (join does safeTransferFrom, so approval must come first).
-// The (group, type=1) wrapper is already deployed and equals `token`, so approve
-// can target it directly without reading wrap()'s return value. The group avatar
-// is read from the token itself (token.avatar()), so no extra config is needed.
-// The escrow assigns the gameId on-chain; discover it afterwards via
-// GET /api/games?player=<address>.
+// stake token, a lift is prepended that assembles it from whatever Circles
+// collateral the target group accepts: the group's own tokens (held as ERC-1155
+// or wrapped — no mint needed, just [unwrap?, wrap]), personal CRC, or another
+// group's tokens (e.g. Gnosis gCRC) — anything owned by an avatar the group
+// trusts — unwrapped as needed and fed through groupMint. So the batch is
+// [unwraps?, groupMint?, wrap, approve, join]; or just [approve, join] when the
+// stake token is already held (join does safeTransferFrom, so approval must
+// come first). The (group, type=1) wrapper is already deployed and equals
+// `token`, so approve can target it directly without reading wrap()'s return
+// value. The group avatar is read from the token itself (token.avatar()), so no
+// extra config is needed. The escrow assigns the gameId on-chain; discover it
+// afterwards via GET /api/games?player=<address>.
 //
 // Throws NoCirclesError if the player holds neither the stake token nor enough
-// personal CRC — un-wrapped or wrapped — for the group to mint, i.e. they can't
-// play.
+// group-accepted collateral — un-wrapped or wrapped — i.e. they can't play.
 export async function joinPvpGame(params: JoinPvpParams) {
   const { escrow, token, approveData, joinData, player, stake } = params;
 
@@ -348,45 +376,47 @@ export async function joinPvpGame(params: JoinPvpParams) {
   if (player && stake !== undefined) {
     const held = await getErc20Balance(token, player);
     if (held < stake) {
-      // Need to mint the shortfall from personal CRC. The wrap math runs in
-      // demurraged units, so check the player has at least that much before
-      // building the batch — otherwise groupMint reverts silently (0x) in the
-      // wallet and the user sees a generic failure.
+      // The lift math runs in demurraged units, so plan against the player's
+      // balances before building the batch — otherwise groupMint/wrap reverts
+      // silently (0x) in the wallet and the user sees a generic failure.
       const group = await getTokenAvatar(token);
       const wrapAmount = await staticToDemurrage(token, stake);
-      const personal = await getPersonalCrcBalance(player);
+      const groupKey = group.toLowerCase();
+      const sources = await fetchLiftSources(player);
 
-      // groupMint can only draw UN-WRAPPED personal CRC (ERC-1155 held in the
-      // Hub). Most wallets keep their CRC as a wrapped ERC-20 though, so when the
-      // un-wrapped balance is short we unwrap just enough of the player's own
-      // wrapped personal CRC back into the Hub first. unwrap() burns their ERC-20
-      // and credits ERC-1155 — no approval, no extra signature. Only when even the
-      // wrapped balance can't cover it does the player genuinely lack the circles.
-      if (personal < wrapAmount) {
-        const wrapped = await fetchWrappedPersonalCrc(player);
-        const unwraps = planUnwraps(wrapAmount - personal, wrapped);
-        if (!unwraps) {
-          const available =
-            personal + wrapped.reduce((sum, w) => sum + w.demurraged, 0n);
-          throw new NoCirclesError(available, wrapAmount);
-        }
-        for (const u of unwraps) {
-          lift.push({
-            to: u.token,
-            data: encodeUnwrap(u.amount),
-            value: "0x0",
-          });
-        }
-      }
-
-      lift.push(
-        {
-          to: HUB_ADDRESS,
-          data: encodeGroupMint(group, [player], [wrapAmount]),
-          value: "0x0",
-        },
-        { to: HUB_ADDRESS, data: encodeWrap(group, wrapAmount), value: "0x0" },
+      // groupMint only accepts collateral from avatars the group trusts, so
+      // filter each candidate owner through hub.isTrusted (a handful of
+      // parallel eth_calls — the group's full trust list can be huge). The
+      // group's own tokens need no trust: they skip the mint entirely.
+      const owners = [...new Set(sources.map((s) => s.avatar))].filter(
+        (a) => a !== groupKey,
       );
+      const flags = await Promise.all(owners.map((a) => isTrusted(group, a)));
+      const trusted = new Set(owners.filter((_, i) => flags[i]));
+      const usable = sources.filter(
+        (s) => s.avatar === groupKey || trusted.has(s.avatar),
+      );
+
+      const plan = planLift(wrapAmount, groupKey, usable);
+      if (!plan) {
+        const available = usable.reduce((sum, s) => sum + s.demurraged, 0n);
+        throw new NoCirclesError(available, wrapAmount);
+      }
+      for (const u of plan.unwraps) {
+        lift.push({ to: u.token, data: encodeUnwrap(u.amount), value: "0x0" });
+      }
+      if (plan.mintOwners.length > 0) {
+        lift.push({
+          to: HUB_ADDRESS,
+          data: encodeGroupMint(group, plan.mintOwners, plan.mintAmounts),
+          value: "0x0",
+        });
+      }
+      lift.push({
+        to: HUB_ADDRESS,
+        data: encodeWrap(group, wrapAmount),
+        value: "0x0",
+      });
     }
   }
 

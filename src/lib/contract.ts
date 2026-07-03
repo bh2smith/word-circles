@@ -2,7 +2,6 @@ import {
   createPublicClient,
   encodeAbiParameters,
   encodeFunctionData,
-  getAddress,
   http,
   keccak256,
   parseAbi,
@@ -54,8 +53,8 @@ export const hubAbi = parseAbi([
   "function groupMint(address group, address[] collateral, uint256[] amounts, bytes data)",
   "function wrap(address avatar, uint256 amount, uint8 circlesType) returns (address)",
   "function isHuman(address avatar) view returns (bool)",
+  "function isTrusted(address truster, address trustee) view returns (bool)",
   "function day(uint256 timestamp) view returns (uint64)",
-  "function balanceOf(address account, uint256 id) view returns (uint256)",
 ]);
 
 // The static ERC20 wrapper (s-gCRC == PVP_TOKEN) exposes the same demurrage math
@@ -214,16 +213,18 @@ export async function getErc20Balance(
   });
 }
 
-// A player's own personal CRC, held in the Hub as ERC1155 with tokenId =
-// uint160(avatar). Used to tell "no CRC at all" apart from "has CRC but the group
-// won't mint it" when the lift can't produce the stake token.
-export async function getPersonalCrcBalance(player: string): Promise<bigint> {
-  const id = BigInt(getAddress(player));
+// Whether `truster` trusts `trustee` in the Hub. groupMint only accepts
+// collateral from avatars the group trusts, so the lift checks each candidate
+// collateral owner through this before counting their tokens.
+export async function isTrusted(
+  truster: string,
+  trustee: string,
+): Promise<boolean> {
   return publicClient.readContract({
     address: HUB_ADDRESS,
     abi: hubAbi,
-    functionName: "balanceOf",
-    args: [player as `0x${string}`, id],
+    functionName: "isTrusted",
+    args: [truster as `0x${string}`, trustee as `0x${string}`],
   });
 }
 
