@@ -75,10 +75,16 @@ fn break_tie(
 
 /// `tiles` is parallel to `players` (cumulative tile score per player) and is
 /// only consulted to break an equal-guess-count tie.
+///
+/// `rake_bps` is skimmed off the top of every pot (splits and ties included,
+/// poker-style). The escrow contract pays out only the amounts we sign and
+/// sends the remainder of the pot to the resolver, so the rake needs no
+/// explicit transfer here.
 pub fn determine_winner(
     players: &[GamePlayerRecord],
     tiles: &[TileScore],
     game: &GameRecord,
+    rake_bps: u32,
 ) -> SettlementResult {
     let capacity = game.capacity.unwrap_or(2) as u64;
     let per_player: U256 = game
@@ -86,7 +92,9 @@ pub fn determine_winner(
         .as_deref()
         .and_then(|s| s.parse().ok())
         .unwrap_or(U256::ZERO);
-    let pot = per_player * U256::from(capacity);
+    let gross = per_player * U256::from(capacity);
+    let rake_bps = rake_bps.min(10_000); // clamp: misconfig must not underflow the pot
+    let pot = gross - gross * U256::from(rake_bps) / U256::from(10_000);
 
     if players.len() < 2 {
         return SettlementResult {
@@ -166,6 +174,7 @@ pub async fn settle_game<R: GameRepository>(
     repo: Arc<R>,
     resolver: Arc<ResolverClient>,
     game_id: &str,
+    rake_bps: u32,
 ) {
     let game = match repo.get_game(game_id).await {
         Ok(Some(g)) => g,
@@ -203,7 +212,7 @@ pub async fn settle_game<R: GameRepository>(
         tiles.push(tally_tiles(&guesses));
     }
 
-    let result = determine_winner(&players, &tiles, &game);
+    let result = determine_winner(&players, &tiles, &game, rake_bps);
     let game_id_bytes = parse_game_id_bytes(game_id);
 
     let signature = match resolver
@@ -270,6 +279,7 @@ pub async fn run_timeout_loop<R: GameRepository>(
     resolver: Arc<ResolverClient>,
     poll_interval: Duration,
     default_timeout_secs: u32,
+    rake_bps: u32,
 ) {
     tracing::info!("PvP timeout loop started");
 
@@ -332,7 +342,7 @@ pub async fn run_timeout_loop<R: GameRepository>(
                 let resolver = Arc::clone(&resolver);
                 let game_id = game.id.clone();
                 tokio::spawn(async move {
-                    settle_game(repo, resolver, &game_id).await;
+                    settle_game(repo, resolver, &game_id, rake_bps).await;
                 });
             }
         }
@@ -433,7 +443,7 @@ mod tests {
             player("0x0000000000000000000000000000000000000002", false, 6, true),
         ];
         let game = game_with_pot("10", 2);
-        let result = determine_winner(&players, &NO_TILES, &game);
+        let result = determine_winner(&players, &NO_TILES, &game, 0);
 
         assert_eq!(result.winners.len(), 1);
         assert_eq!(
@@ -450,7 +460,7 @@ mod tests {
             player("0x0000000000000000000000000000000000000002", true, 5, true),
         ];
         let game = game_with_pot("10", 2);
-        let result = determine_winner(&players, &NO_TILES, &game);
+        let result = determine_winner(&players, &NO_TILES, &game, 0);
 
         assert_eq!(result.winners.len(), 1);
         assert_eq!(
@@ -468,7 +478,7 @@ mod tests {
             player("0x0000000000000000000000000000000000000002", true, 4, true),
         ];
         let game = game_with_pot("10", 2);
-        let result = determine_winner(&players, &[tiles(11, 3), tiles(8, 5)], &game);
+        let result = determine_winner(&players, &[tiles(11, 3), tiles(8, 5)], &game, 0);
 
         assert_eq!(result.winners.len(), 1);
         assert_eq!(
@@ -486,7 +496,7 @@ mod tests {
             player("0x0000000000000000000000000000000000000002", true, 4, true),
         ];
         let game = game_with_pot("10", 2);
-        let result = determine_winner(&players, &[tiles(9, 2), tiles(9, 6)], &game);
+        let result = determine_winner(&players, &[tiles(9, 2), tiles(9, 6)], &game, 0);
 
         assert_eq!(result.winners.len(), 1);
         assert_eq!(
@@ -504,7 +514,7 @@ mod tests {
             player("0x0000000000000000000000000000000000000002", true, 4, true),
         ];
         let game = game_with_pot("10", 2);
-        let result = determine_winner(&players, &[tiles(9, 4), tiles(9, 4)], &game);
+        let result = determine_winner(&players, &[tiles(9, 4), tiles(9, 4)], &game, 0);
 
         assert_eq!(result.winners.len(), 2);
         assert_eq!(result.amounts[0], U256::from(10));
@@ -519,7 +529,7 @@ mod tests {
             player("0x0000000000000000000000000000000000000002", false, 6, true),
         ];
         let game = game_with_pot("10", 2);
-        let result = determine_winner(&players, &[tiles(7, 4), tiles(10, 2)], &game);
+        let result = determine_winner(&players, &[tiles(7, 4), tiles(10, 2)], &game, 0);
 
         assert_eq!(result.winners.len(), 1);
         assert_eq!(
@@ -536,7 +546,7 @@ mod tests {
             player("0x0000000000000000000000000000000000000002", false, 6, true),
         ];
         let game = game_with_pot("10", 2);
-        let result = determine_winner(&players, &[tiles(5, 3), tiles(5, 3)], &game);
+        let result = determine_winner(&players, &[tiles(5, 3), tiles(5, 3)], &game, 0);
 
         assert_eq!(result.winners.len(), 2);
         assert_eq!(result.amounts[0] + result.amounts[1], U256::from(20));
@@ -554,7 +564,7 @@ mod tests {
             ),
         ];
         let game = game_with_pot("10", 2);
-        let result = determine_winner(&players, &NO_TILES, &game);
+        let result = determine_winner(&players, &NO_TILES, &game, 0);
 
         assert_eq!(result.winners.len(), 1);
         assert_eq!(
@@ -581,7 +591,7 @@ mod tests {
             ),
         ];
         let game = game_with_pot("10", 2);
-        let result = determine_winner(&players, &NO_TILES, &game);
+        let result = determine_winner(&players, &NO_TILES, &game, 0);
 
         assert_eq!(result.winners.len(), 2);
         assert_eq!(result.amounts[0] + result.amounts[1], U256::from(20));
@@ -594,13 +604,53 @@ mod tests {
             player("0x0000000000000000000000000000000000000002", false, 6, true),
         ];
         let game = game_with_pot("10000000000000000000", 2); // 10e18
-        let result = determine_winner(&players, &NO_TILES, &game);
+        let result = determine_winner(&players, &NO_TILES, &game, 0);
 
         assert_eq!(result.winners.len(), 1);
         assert_eq!(
             result.amounts[0],
             U256::from(20_000_000_000_000_000_000u128)
         );
+    }
+
+    #[test]
+    fn rake_is_skimmed_off_pot() {
+        let players = vec![
+            player("0x0000000000000000000000000000000000000001", true, 4, true),
+            player("0x0000000000000000000000000000000000000002", false, 6, true),
+        ];
+        let game = game_with_pot("10000000000000000000", 2); // 10e18 each, 20e18 gross
+        // 500 bps = 5% rake → winner gets 19e18, 1e18 stays for the resolver.
+        let result = determine_winner(&players, &NO_TILES, &game, 500);
+        assert_eq!(
+            result.amounts[0],
+            U256::from(19_000_000_000_000_000_000u128)
+        );
+
+        // Split pots are raked too.
+        let timed_out = vec![
+            player(
+                "0x0000000000000000000000000000000000000001",
+                false,
+                0,
+                false,
+            ),
+            player(
+                "0x0000000000000000000000000000000000000002",
+                false,
+                0,
+                false,
+            ),
+        ];
+        let result = determine_winner(&timed_out, &NO_TILES, &game, 500);
+        assert_eq!(
+            result.amounts[0] + result.amounts[1],
+            U256::from(19_000_000_000_000_000_000u128)
+        );
+
+        // Absurd config clamps to 100% rather than panicking.
+        let result = determine_winner(&players, &NO_TILES, &game, 60_000);
+        assert_eq!(result.amounts[0], U256::ZERO);
     }
 
     #[test]

@@ -42,8 +42,18 @@ async fn main() {
         .and_then(|s| s.parse().ok())
         .unwrap_or(10800);
 
+    // Basis points skimmed off every PvP pot for the resolver (500 = 5%).
+    let pvp_rake_bps: u32 = std::env::var("PVP_RAKE_BPS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
+
     if pvp_enabled {
-        tracing::info!(timeout_secs = pvp_timeout_secs, "PvP mode enabled");
+        tracing::info!(
+            timeout_secs = pvp_timeout_secs,
+            rake_bps = pvp_rake_bps,
+            "PvP mode enabled"
+        );
     }
 
     let resolver = match ResolverClient::from_env() {
@@ -107,6 +117,7 @@ async fn main() {
                     timeout_resolver,
                     Duration::from_secs(timeout_poll_secs),
                     pvp_timeout_secs,
+                    pvp_rake_bps,
                 )
                 .await;
             });
